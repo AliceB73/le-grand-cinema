@@ -18,6 +18,8 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Generate Prisma Client
+        run: npm run prisma:generate
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
