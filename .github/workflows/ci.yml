@@ -67,7 +67,11 @@ jobs:
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
             -Dsonar.javascript.lcov.reportPaths=apps/api/coverage/lcov.info,apps/web/coverage/lcov.info
-            -Dsonar.coverage.exclusions=apps/api/prisma/**,apps/web/src/api-config.ts,supabase/**
+            -Dsonar.sources=apps/api/src,apps/web/src
+            -Dsonar.tests=apps/api/src,apps/web/src,e2e
+            -Dsonar.test.inclusions=**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx
+            -Dsonar.exclusions=**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx
+            -Dsonar.coverage.exclusions=apps/web/src/api-config.ts
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
