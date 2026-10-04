@@ -1,5 +1,6 @@
 import { Genre } from '@prisma/client';
 import { describe, expect, it, jest } from '@jest/globals';
+import { prisma } from '../data/prisma.js';
 import {
   getUpcomingProgramme,
   type ProgrammeRepository,
@@ -51,5 +52,30 @@ describe('getUpcomingProgramme', () => {
         startTime: '2026-10-04T15:00:00.000Z',
       },
     ]);
+  });
+
+  it('uses the Prisma repository when no repository is provided', async () => {
+    const now = new Date('2026-10-04T14:00:00.000Z');
+    const findMany = jest
+      .spyOn(prisma.showtime, 'findMany')
+      .mockResolvedValue([]);
+    jest.useFakeTimers().setSystemTime(now);
+
+    try {
+      await expect(getUpcomingProgramme()).resolves.toEqual([]);
+      expect(findMany).toHaveBeenCalledWith({
+        where: {
+          startTime: {
+            gte: now,
+            lt: new Date('2026-10-10T22:00:00.000Z'),
+          },
+        },
+        include: { movie: true },
+        orderBy: { startTime: 'asc' },
+      });
+    } finally {
+      findMany.mockRestore();
+      jest.useRealTimers();
+    }
   });
 });

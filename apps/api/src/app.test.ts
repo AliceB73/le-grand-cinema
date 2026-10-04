@@ -2,6 +2,7 @@ import { describe, expect, it, jest } from '@jest/globals';
 import { Genre } from '@prisma/client';
 import request from 'supertest';
 import { createApp } from './app.js';
+import * as programmeService from './programme/programme.service.js';
 
 describe('API baseline', () => {
   it('returns a healthy status', async () => {
@@ -44,6 +45,19 @@ describe('API baseline', () => {
       genreLabel: 'Thriller',
       roomName: 'Salle A',
     });
+  });
+
+  it('uses the default programme provider', async () => {
+    const getUpcomingProgramme = jest
+      .spyOn(programmeService, 'getUpcomingProgramme')
+      .mockResolvedValue([]);
+
+    const response = await request(createApp()).get('/api/programme');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual([]);
+    expect(getUpcomingProgramme).toHaveBeenCalled();
+    getUpcomingProgramme.mockRestore();
   });
 
   it('returns an explicit error and logs when programme retrieval fails', async () => {

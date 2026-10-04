@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { apiBaseUrl } from './api-config';
 
 const programmeItemSchema = z.object({
   id: z.string(),
@@ -26,13 +27,17 @@ const programmeItemSchema = z.object({
 export type ProgrammeItem = z.infer<typeof programmeItemSchema>;
 
 const programmeSchema = z.array(programmeItemSchema);
+type ProgrammeResponse = Pick<Response, 'ok' | 'status' | 'json'>;
+export type ProgrammeFetcher = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<ProgrammeResponse>;
 
 export async function getProgramme(
   signal?: AbortSignal,
+  fetcher: ProgrammeFetcher = fetch,
 ): Promise<ProgrammeItem[]> {
-  const apiBaseUrl =
-    import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:3000';
-  const response = await fetch(`${apiBaseUrl}/api/programme`, { signal });
+  const response = await fetcher(`${apiBaseUrl}/api/programme`, { signal });
 
   if (!response.ok) {
     throw new Error(`Programme request failed with status ${response.status}.`);
