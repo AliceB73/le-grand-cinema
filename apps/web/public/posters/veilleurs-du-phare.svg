@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" role="img">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#12243a"/>
+      <stop offset="1" stop-color="#41758a"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="600" fill="url(#sky)"/>
+  <circle cx="306" cy="116" r="53" fill="#f8dca1" opacity=".9"/>
+  <path d="M0 382 108 306l67 55 89-104 136 113v230H0Z" fill="#183342"/>
+  <path d="m142 431 45-207h43l41 207Z" fill="#e9e0cf"/>
+  <path d="m174 286 42-52 39 52Z" fill="#9d513a"/>
+  <rect x="180" y="317" width="55" height="11" fill="#28394a"/>
+  <path d="M204 326h9v53h-9z" fill="#e8c27c"/>
+  <path d="M0 449c84-35 153 25 226-2s115-19 174 6v147H0Z" fill="#0d2233"/>
+  <text x="200" y="510" fill="#fff4df" font-family="Georgia,serif" font-size="27" text-anchor="middle">LES VEILLEURS</text>
+  <text x="200" y="544" fill="#fff4df" font-family="Georgia,serif" font-size="27" text-anchor="middle">DU PHARE</text>
+</svg>

@@ -18,13 +18,15 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "npm run test --workspaces --if-present",
+    "test:coverage": "npm run test:coverage --workspaces --if-present",
     "test:e2e": "playwright test",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "supabase:status": "supabase status",
     "prisma:generate": "npm run prisma:generate --workspace=@le-grand-cinema/api",
     "prisma:validate": "npm run prisma:validate --workspace=@le-grand-cinema/api",
-    "prisma:migrate": "npm run prisma:migrate --workspace=@le-grand-cinema/api --"
+    "prisma:migrate": "npm run prisma:migrate --workspace=@le-grand-cinema/api --",
+    "db:seed": "npm run db:seed --workspace=@le-grand-cinema/api"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",
