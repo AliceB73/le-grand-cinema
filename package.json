@@ -24,7 +24,8 @@
     "supabase:status": "supabase status",
     "prisma:generate": "npm run prisma:generate --workspace=@le-grand-cinema/api",
     "prisma:validate": "npm run prisma:validate --workspace=@le-grand-cinema/api",
-    "prisma:migrate": "npm run prisma:migrate --workspace=@le-grand-cinema/api --"
+    "prisma:migrate": "npm run prisma:migrate --workspace=@le-grand-cinema/api --",
+    "db:seed": "npm run db:seed --workspace=@le-grand-cinema/api"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.1",

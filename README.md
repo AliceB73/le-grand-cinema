@@ -16,38 +16,46 @@ Pour garantir une gestion claire du versionning du projet, nous appliquons la st
 
 - Git, Node.js 24 et npm 11
 - Docker Desktop démarré
-- Supabase CLI, fournie comme dépendance du projet (`npm ci`)
+- Supabase CLI, fournie comme dépendance du projet (`npm.cmd ci`)
 
 ### Installer les dépendances et configurer l’environnement
 
 Depuis la racine `le-grand-cinema` :
 
 ```powershell
-npm ci
-Copy-Item .env.example .env
+npm.cmd ci
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
 La configuration Supabase est versionnée dans `supabase/config.toml`. Pour démarrer les services locaux :
 
 ```powershell
-npm run supabase:start
-npm run supabase:status
+npm.cmd run supabase:start
+npm.cmd run supabase:status
 ```
 
 Copiez la clé `anon` affichée par `supabase status` dans `.env` à la place de `SUPABASE_ANON_KEY`. Les variables `.env` ne doivent jamais être commitées.
 
-Prisma est configuré pour la base locale et son schéma est validé. Aucune table métier ni migration initiale n’est inventée pendant l’amorçage ; la première migration sera créée avec le premier modèle métier défini.
+Prisma pilote le schéma applicatif et ses migrations versionnées dans `apps/api/prisma/migrations`. La migration `add_movie_genre` ajoute un genre principal contrôlé au modèle `Movie`.
 
 Depuis la racine du projet, après avoir démarré Supabase, créez une migration Prisma en lui donnant un nom :
 
 ```powershell
-npm run prisma:migrate -- --name init_cinema_domain
+npm.cmd run prisma:migrate -- --name init_cinema_domain
 ```
+
+Après avoir appliqué les migrations, chargez les films et séances fictifs locaux :
+
+```powershell
+npm.cmd run db:seed
+```
+
+Le seed peut être relancé sans créer de doublons. Il met à jour les six séances de démonstration pour qu’elles restent dans la période à venir. Les migrations applicatives sont gérées par Prisma ; après une réinitialisation complète de Supabase, appliquez les migrations déjà versionnées avec `npm run prisma:migrate`, puis relancez le seed. Cette réinitialisation efface les données de la base locale.
 
 ### Démarrer les applications dans Docker
 
 ```powershell
-npm run dev
+npm.cmd run dev
 ```
 
 - Interface React : <http://localhost:5173>
@@ -61,19 +69,19 @@ Pour arrêter les conteneurs applicatifs et Supabase :
 
 ```powershell
 docker compose down
-npm run supabase:stop
+npm.cmd run supabase:stop
 ```
 
 ### Vérifications
 
 ```powershell
-npm run typecheck
-npm run lint
-npm run format:check
-npm test
-npm run prisma:validate
-npm run build
-npm run test:e2e
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run format:check
+npm.cmd test
+npm.cmd run prisma:validate
+npm.cmd run build
+npm.cmd run test:e2e
 ```
 
-Les tests bout en bout Playwright lancent le serveur front automatiquement ; l’API doit être en cours d’exécution pour que le lien Swagger soit utilisable. Le workflow GitHub Actions requiert les secrets `SONAR_TOKEN`, `SONAR_ORGANIZATION` et `SONAR_PROJECT_KEY` pour analyser le projet dans SonarCloud.
+Les tests bout en bout Playwright lancent le serveur front automatiquement. Le workflow GitHub Actions requiert les secrets `SONAR_TOKEN`, `SONAR_ORGANIZATION` et `SONAR_PROJECT_KEY` pour analyser le projet dans SonarCloud.

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" role="img">
+  <defs>
+    <linearGradient id="dusk" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ed9b68"/>
+      <stop offset=".55" stop-color="#9f5472"/>
+      <stop offset="1" stop-color="#353753"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="600" fill="url(#dusk)"/>
+  <circle cx="200" cy="210" r="76" fill="#ffdf9a" opacity=".92"/>
+  <path d="M0 361h400v239H0Z" fill="#33334b"/>
+  <path d="M55 300h290v225H55Z" rx="27" fill="#e9d4b4"/>
+  <path d="M75 322h250v124H75Z" fill="#526878"/>
+  <path d="M191 322h18v124h-18Z" fill="#dec7a7"/>
+  <path d="M121 350h32v47h-32zm126 0h32v47h-32z" fill="#f3cf87"/>
+  <path d="M85 472h230v22H85Z" fill="#bd684f"/>
+  <circle cx="111" cy="517" r="23" fill="#222938"/>
+  <circle cx="288" cy="517" r="23" fill="#222938"/>
+  <path d="M20 600 96 529h36L89 600Zm273 0-43-71h38l32 71Z" fill="#e7c27c" opacity=".7"/>
+  <text x="200" y="565" fill="#fff2d6" font-family="Georgia,serif" font-size="31" text-anchor="middle">LE DERNIER TRAM</text>
+</svg>

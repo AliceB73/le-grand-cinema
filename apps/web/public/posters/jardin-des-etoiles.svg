@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600" role="img">
+  <defs>
+    <linearGradient id="night" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#18254a"/>
+      <stop offset="1" stop-color="#563b76"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="600" fill="url(#night)"/>
+  <g fill="#ffe6a4">
+    <circle cx="69" cy="88" r="4"/><circle cx="137" cy="140" r="3"/>
+    <circle cx="274" cy="84" r="5"/><circle cx="334" cy="178" r="3"/>
+    <circle cx="232" cy="198" r="4"/><circle cx="88" cy="234" r="3"/>
+  </g>
+  <path d="M0 381c84-53 129-45 201-5 72-40 118-48 199 5v219H0Z" fill="#253c54"/>
+  <path d="M0 449c91-61 178-15 242-39 56-21 103-14 158 12v178H0Z" fill="#182b40"/>
+  <path d="M196 385c8-102 44-157 99-193 14 78-13 146-87 202Z" fill="#77a679"/>
+  <path d="M207 390c-31-76-72-107-130-120 4 69 38 119 118 139Z" fill="#9bc58c"/>
+  <g fill="#ffd889"><circle cx="290" cy="201" r="11"/><circle cx="100" cy="273" r="9"/><circle cx="253" cy="297" r="8"/></g>
+  <text x="200" y="505" fill="#fff1cf" font-family="Georgia,serif" font-size="27" text-anchor="middle">LE JARDIN</text>
+  <text x="200" y="541" fill="#fff1cf" font-family="Georgia,serif" font-size="27" text-anchor="middle">DES ÉTOILES</text>
+</svg>

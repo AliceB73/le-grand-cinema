@@ -1,1 +1,3 @@
--- Add deterministic local development fixtures here when application data is defined.
+-- Application tables are managed by Prisma migrations. After a database reset,
+-- apply pending migrations with `npm.cmd run prisma:migrate` and then load demo
+-- data with `npm.cmd run db:seed`.

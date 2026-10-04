@@ -19,6 +19,20 @@ enum BookingStatus {
   CANCELLED
 }
 
+enum Genre {
+  ACTION
+  ANIMATION
+  AVENTURE
+  COMEDIE
+  DOCUMENTAIRE
+  DRAME
+  FANTASTIQUE
+  HORREUR
+  ROMANCE
+  SCIENCE_FICTION
+  THRILLER
+}
+
 model User {
   id        String    @id @default(uuid())
   email     String    @unique
@@ -31,6 +45,7 @@ model User {
 model Movie {
   id          String     @id @default(uuid())
   title       String
+  genre       Genre
   description String
   duration    Int        // Durée en minutes
   posterUrl   String?
