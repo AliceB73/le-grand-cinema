@@ -9,6 +9,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.seed.json",
     "test": "jest --runInBand",
+    "test:coverage": "jest --runInBand --coverage",
     "prisma:generate": "prisma generate",
     "prisma:validate": "dotenv -e ../../.env -- prisma validate --schema prisma/schema.prisma",
     "prisma:migrate": "dotenv -e ../../.env -- prisma migrate dev --schema prisma/schema.prisma",

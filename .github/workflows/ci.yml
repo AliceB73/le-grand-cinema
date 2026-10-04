@@ -23,7 +23,23 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run format:check
-      - run: npm test
+      - run: npm run test:coverage
+      - name: Make coverage paths repository-relative
+        run: |
+          sed -i 's|^SF:|SF:apps/api/|' apps/api/coverage/lcov.info
+          sed -i 's|^SF:|SF:apps/web/|' apps/web/coverage/lcov.info
+      - name: Upload API coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-coverage
+          path: apps/api/coverage/lcov.info
+          if-no-files-found: error
+      - name: Upload web coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: apps/web/coverage/lcov.info
+          if-no-files-found: error
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e
@@ -35,11 +51,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Download API coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: api-coverage
+          path: apps/api/coverage
+      - name: Download web coverage report
+        uses: actions/download-artifact@v4
+        with:
+          name: web-coverage
+          path: apps/web/coverage
       - uses: SonarSource/sonarqube-scan-action@v5
         with:
           args: >
             -Dsonar.organization=${{ secrets.SONAR_ORGANIZATION }}
             -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.javascript.lcov.reportPaths=apps/api/coverage/lcov.info,apps/web/coverage/lcov.info
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io

@@ -78,7 +78,7 @@ npm.cmd run supabase:stop
 npm.cmd run typecheck
 npm.cmd run lint
 npm.cmd run format:check
-npm.cmd test
+npm.cmd run test:coverage
 npm.cmd run prisma:validate
 npm.cmd run build
 npm.cmd run test:e2e
