@@ -1,0 +1,1 @@
+-- Add deterministic local development fixtures here when application data is defined.

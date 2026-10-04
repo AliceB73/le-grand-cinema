@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+}
+
+model User {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  role      Role      @default(USER)
+  bookings  Booking[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Movie {
+  id          String     @id @default(uuid())
+  title       String
+  description String
+  duration    Int        // Durée en minutes
+  posterUrl   String?
+  showtimes   Showtime[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Showtime {
+  id        String    @id @default(uuid())
+  movieId   String
+  movie     Movie     @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  roomName  String    // Ex: "Salle Standard 1" (Capacité totale du cinéma : 10 salles)
+  startTime DateTime
+  price     Float
+  bookings  Booking[]
+  seats     Seat[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Booking {
+  id         String        @id @default(uuid())
+  userId     String
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  showtimeId String
+  showtime   Showtime      @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
+  status     BookingStatus @default(CONFIRMED)
+  seats      Seat[]
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+model Seat {
+  id         String   @id @default(uuid())
+  rowNumber  String   // Rangée (ex: "A")
+  seatNumber Int      // Numéro de siège (ex: 12)
+  showtimeId String
+  showtime   Showtime @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
+  bookingId  String?
+  booking    Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@unique([showtimeId, rowNumber, seatNumber]) // Garantit qu'un siège ne soit pas dupliqué pour une même séance
+}

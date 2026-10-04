@@ -1,0 +1,39 @@
+{
+  "name": "le-grand-cinema",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.9.0"
+  },
+  "scripts": {
+    "dev": "docker compose up --build",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "playwright test",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "prisma:generate": "npm run prisma:generate --workspace=@le-grand-cinema/api",
+    "prisma:validate": "npm run prisma:validate --workspace=@le-grand-cinema/api",
+    "prisma:migrate": "npm run prisma:migrate --workspace=@le-grand-cinema/api --"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@eslint/js": "^9.39.0",
+    "eslint": "^9.39.0",
+    "globals": "^16.5.0",
+    "prettier": "^3.6.2",
+    "supabase": "^2.119.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.2"
+  }
+}

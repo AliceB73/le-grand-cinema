@@ -1,0 +1,37 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      DIRECT_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
+      SUPABASE_URL: http://host.docker.internal:54321
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?Set SUPABASE_ANON_KEY in .env from supabase status}
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    ports:
+      - '3000:3000'
+    volumes:
+      - .:/workspace
+      - api_node_modules:/workspace/node_modules
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      - api
+    ports:
+      - '5173:5173'
+    volumes:
+      - .:/workspace
+      - web_node_modules:/workspace/node_modules
+
+volumes:
+  api_node_modules:
+  web_node_modules:

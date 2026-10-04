@@ -1,0 +1,9 @@
+.git
+.github
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/playwright-report
+**/test-results
+README.md
