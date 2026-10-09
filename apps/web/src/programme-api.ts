@@ -21,6 +21,7 @@ const programmeItemSchema = z.object({
   duration: z.number().int().positive(),
   posterUrl: z.string().nullable(),
   roomName: z.string(),
+  occupancyStatus: z.enum(['AVAILABLE', 'LAST_SEATS', 'FULL']),
   startTime: z.iso.datetime(),
 });
 

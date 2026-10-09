@@ -3,6 +3,19 @@ import { generateDemoShowtimes } from '../src/programme/demo-schedule.js';
 
 const prisma = new PrismaClient();
 
+const rooms = [
+  { name: 'Salle A', category: 'PREMIUM_IMAX', capacity: 300 },
+  { name: 'Salle B', category: 'PREMIUM_IMAX', capacity: 300 },
+  { name: 'Salle C', category: 'STANDARD', capacity: 180 },
+  { name: 'Salle D', category: 'STANDARD', capacity: 180 },
+  { name: 'Salle E', category: 'STANDARD', capacity: 180 },
+  { name: 'Salle F', category: 'STANDARD', capacity: 180 },
+  { name: 'Salle G', category: 'VIP', capacity: 120 },
+  { name: 'Salle H', category: 'VIP', capacity: 120 },
+  { name: 'Salle I', category: 'EVENT', capacity: 70 },
+  { name: 'Salle J', category: 'EVENT', capacity: 70 },
+] as const;
+
 const movies = [
   {
     id: 'demo-movie-veilleurs-du-phare',
@@ -45,6 +58,14 @@ const movies = [
 async function seed() {
   let totalShowtimes = 0;
 
+  for (const room of rooms) {
+    await prisma.room.upsert({
+      where: { name: room.name },
+      create: room,
+      update: room,
+    });
+  }
+
   for (const movie of movies) {
     await prisma.movie.upsert({
       where: { id: movie.id },
@@ -75,13 +96,13 @@ async function seed() {
         create: {
           id: screening.id,
           movieId: movie.id,
-          roomName: movie.roomName,
+          roomId: movie.roomName,
           startTime: screening.startTime,
           price: 9.5,
         },
         update: {
           movieId: movie.id,
-          roomName: movie.roomName,
+          roomId: movie.roomName,
           startTime: screening.startTime,
           price: 9.5,
         },
