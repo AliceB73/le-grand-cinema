@@ -50,7 +50,7 @@ Après avoir appliqué les migrations, chargez les films et séances fictifs loc
 npm.cmd run db:seed
 ```
 
-Le seed peut être relancé sans créer de doublons. Il met à jour les six séances de démonstration pour qu’elles restent dans la période à venir. Les migrations applicatives sont gérées par Prisma ; après une réinitialisation complète de Supabase, appliquez les migrations déjà versionnées avec `npm run prisma:migrate`, puis relancez le seed. Cette réinitialisation efface les données de la base locale.
+Le seed peut être relancé sans créer de doublons : il crée trois films et 72 séances, à raison de deux séances hebdomadaires par film, du 12 octobre au 31 décembre 2026. Les jours et horaires sont pseudo-aléatoires, réalistes et identiques à chaque relance. Les migrations applicatives sont gérées par Prisma ; après une réinitialisation complète de Supabase, appliquez les migrations déjà versionnées avec `npm run prisma:migrate`, puis relancez le seed. Cette réinitialisation efface les données de la base locale.
 
 ### Démarrer les applications dans Docker
 
