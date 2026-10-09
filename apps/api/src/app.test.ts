@@ -31,6 +31,7 @@ describe('API baseline', () => {
         duration: 108,
         posterUrl: '/posters/veilleurs-du-phare.svg',
         roomName: 'Salle A',
+        occupancyStatus: 'AVAILABLE',
         startTime: '2026-10-04T15:00:00.000Z',
       },
     ]);
@@ -44,6 +45,7 @@ describe('API baseline', () => {
       genre: 'THRILLER',
       genreLabel: 'Thriller',
       roomName: 'Salle A',
+      occupancyStatus: 'AVAILABLE',
     });
   });
 

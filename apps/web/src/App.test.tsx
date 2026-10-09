@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
   waitFor,
 } from '@testing-library/react';
 import App from './App';
@@ -17,6 +18,7 @@ jest.mock('./programme-api', () => ({
 describe('App', () => {
   afterEach(() => {
     cleanup();
+    jest.useRealTimers();
     jest.mocked(getProgramme).mockReset();
   });
 
@@ -30,6 +32,7 @@ describe('App', () => {
         duration: 108,
         posterUrl: '/posters/veilleurs-du-phare.svg',
         roomName: 'Salle A',
+        occupancyStatus: 'AVAILABLE',
         startTime: '2026-10-04T15:00:00.000Z',
       },
     ]);
@@ -45,6 +48,156 @@ describe('App', () => {
     expect(
       screen.getByAltText('Affiche du film Les Veilleurs du Phare'),
     ).toBeTruthy();
+  });
+
+  it('opens a screening details panel and closes it with Escape', async () => {
+    jest.mocked(getProgramme).mockResolvedValue([
+      {
+        id: 'screening-1',
+        title: 'Les Veilleurs du Phare',
+        genre: 'THRILLER',
+        genreLabel: 'Thriller',
+        duration: 108,
+        posterUrl: null,
+        roomName: 'Salle A',
+        occupancyStatus: 'LAST_SEATS',
+        startTime: '2026-10-04T15:00:00.000Z',
+      },
+    ]);
+
+    render(<App />);
+
+    const cardButton = await screen.findByRole('button', {
+      name: /Voir les détails de la séance Les Veilleurs du Phare/,
+    });
+    fireEvent.click(cardButton);
+
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText('Salle A')).toBeTruthy();
+    expect(within(panel).getByText('Dernières places')).toBeTruthy();
+    const closeButton = within(panel).getByRole('button', {
+      name: 'Fermer les détails de la séance',
+    });
+    const chooseSeatsButton = within(panel).getByRole('button', {
+      name: 'Choisir mes places',
+    });
+    expect(chooseSeatsButton).toBeTruthy();
+
+    fireEvent.keyDown(closeButton, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement).toBe(chooseSeatsButton);
+    fireEvent.keyDown(chooseSeatsButton, { key: 'Tab' });
+    expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(cardButton);
+  });
+
+  it('closes the details panel when the backdrop is clicked', async () => {
+    jest.mocked(getProgramme).mockResolvedValue([
+      {
+        id: 'screening-1',
+        title: 'Les Veilleurs du Phare',
+        genre: 'THRILLER',
+        genreLabel: 'Thriller',
+        duration: 108,
+        posterUrl: null,
+        roomName: 'Salle A',
+        occupancyStatus: 'AVAILABLE',
+        startTime: '2026-10-04T15:00:00.000Z',
+      },
+    ]);
+
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Voir les détails de la séance Les Veilleurs du Phare/,
+      }),
+    );
+
+    const panel = await screen.findByRole('dialog');
+    if (!panel.parentElement) {
+      throw new Error('The screening panel should have a backdrop.');
+    }
+    fireEvent.mouseDown(panel.parentElement);
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('does not offer booking for a full screening', async () => {
+    jest.mocked(getProgramme).mockResolvedValue([
+      {
+        id: 'screening-full',
+        title: 'Séance complète',
+        genre: 'DRAME',
+        genreLabel: 'Drame',
+        duration: 100,
+        posterUrl: null,
+        roomName: 'Salle A',
+        occupancyStatus: 'FULL',
+        startTime: '2026-10-04T15:00:00.000Z',
+      },
+    ]);
+
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: /Voir les détails de la séance Séance complète/,
+      }),
+    );
+
+    const panel = await screen.findByRole('dialog');
+    expect(within(panel).getByText('Complet')).toBeTruthy();
+    expect(
+      within(panel).queryByRole('button', { name: 'Choisir mes places' }),
+    ).toBeNull();
+  });
+
+  it('refreshes occupancy statuses every five seconds without reloading', async () => {
+    jest.useFakeTimers();
+    jest
+      .mocked(getProgramme)
+      .mockResolvedValueOnce([
+        {
+          id: 'screening-1',
+          title: 'Les Veilleurs du Phare',
+          genre: 'THRILLER',
+          genreLabel: 'Thriller',
+          duration: 108,
+          posterUrl: null,
+          roomName: 'Salle A',
+          occupancyStatus: 'AVAILABLE',
+          startTime: '2026-10-04T15:00:00.000Z',
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          id: 'screening-1',
+          title: 'Les Veilleurs du Phare',
+          genre: 'THRILLER',
+          genreLabel: 'Thriller',
+          duration: 108,
+          posterUrl: null,
+          roomName: 'Salle A',
+          occupancyStatus: 'LAST_SEATS',
+          startTime: '2026-10-04T15:00:00.000Z',
+        },
+      ]);
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText('Disponible')).toBeTruthy();
+    await act(async () => {
+      jest.advanceTimersByTime(5000);
+      await Promise.resolve();
+    });
+
+    expect(getProgramme).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('Dernières places')).toBeTruthy();
   });
 
   it('shows an explicit empty-programme state', async () => {
@@ -69,6 +222,7 @@ describe('App', () => {
         duration: 96,
         posterUrl: null,
         roomName: 'Salle A',
+        occupancyStatus: 'AVAILABLE',
         startTime: '2026-10-04T15:00:00.000Z',
       },
       {
@@ -79,6 +233,7 @@ describe('App', () => {
         duration: 96,
         posterUrl: null,
         roomName: 'Salle A',
+        occupancyStatus: 'AVAILABLE',
         startTime: '2026-10-05T15:00:00.000Z',
       },
       {
@@ -89,6 +244,7 @@ describe('App', () => {
         duration: 108,
         posterUrl: null,
         roomName: 'Salle B',
+        occupancyStatus: 'AVAILABLE',
         startTime: '2026-10-04T17:00:00.000Z',
       },
     ]);
@@ -133,6 +289,7 @@ describe('App', () => {
         duration: 96,
         posterUrl: null,
         roomName: 'Salle A',
+        occupancyStatus: 'AVAILABLE',
         startTime: '2026-10-04T15:00:00.000Z',
       },
       {
@@ -143,6 +300,7 @@ describe('App', () => {
         duration: 108,
         posterUrl: null,
         roomName: 'Salle B',
+        occupancyStatus: 'AVAILABLE',
         startTime: '2026-10-04T17:00:00.000Z',
       },
     ]);
@@ -182,6 +340,7 @@ describe('App', () => {
         duration: 90,
         posterUrl: null,
         roomName: 'Salle B',
+        occupancyStatus: 'AVAILABLE',
         startTime: '2026-10-04T15:00:00.000Z',
       },
     ]);

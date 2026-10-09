@@ -33,6 +33,20 @@ enum Genre {
   THRILLER
 }
 
+enum RoomCategory {
+  PREMIUM_IMAX
+  STANDARD
+  VIP
+  EVENT
+}
+
+model Room {
+  name      String       @id
+  category  RoomCategory
+  capacity  Int
+  showtimes Showtime[]
+}
+
 model User {
   id        String    @id @default(uuid())
   email     String    @unique
@@ -58,7 +72,8 @@ model Showtime {
   id        String    @id @default(uuid())
   movieId   String
   movie     Movie     @relation(fields: [movieId], references: [id], onDelete: Cascade)
-  roomName  String    // Ex: "Salle Standard 1" (Capacité totale du cinéma : 10 salles)
+  roomId    String
+  room      Room      @relation(fields: [roomId], references: [name])
   startTime DateTime
   price     Float
   bookings  Booking[]
