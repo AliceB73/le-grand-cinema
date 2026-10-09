@@ -14,6 +14,7 @@ test('home page displays upcoming cinema screenings', async ({ page }) => {
           duration: 108,
           posterUrl: '/posters/veilleurs-du-phare.svg',
           roomName: 'Salle B',
+          occupancyStatus: 'AVAILABLE',
           startTime: '2026-10-05T12:00:00.000Z',
         },
       ]),
@@ -23,7 +24,7 @@ test('home page displays upcoming cinema screenings', async ({ page }) => {
   await page.goto('/');
 
   await expect(
-    page.getByRole('heading', { name: 'La programmation' }),
+    page.getByRole('heading', { name: 'La programmation', level: 1 }),
   ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Les Veilleurs du Phare' }),
