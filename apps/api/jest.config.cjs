@@ -6,7 +6,9 @@ module.exports = {
     '<rootDir>/src/app.ts',
     '<rootDir>/src/docs/openapi.ts',
     '<rootDir>/src/programme/**/*.ts',
+    '<rootDir>/src/seats/**/*.ts',
     '!<rootDir>/src/programme/**/*.test.ts',
+    '!<rootDir>/src/seats/**/*.test.ts',
   ],
   transform: {
     '^.+\\.tsx?$': [

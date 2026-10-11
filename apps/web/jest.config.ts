@@ -7,6 +7,8 @@ const config: Config = {
   collectCoverageFrom: [
     '<rootDir>/src/App.tsx',
     '<rootDir>/src/programme-api.ts',
+    '<rootDir>/src/SeatMap.tsx',
+    '<rootDir>/src/seat-api.ts',
   ],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   transform: {

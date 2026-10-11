@@ -8,7 +8,12 @@ import {
 } from '@testing-library/react';
 import SeatMap from './SeatMap';
 import type { ProgrammeItem } from './programme-api';
-import { getSeatMap, getSeatSessionToken, holdSeats } from './seat-api';
+import {
+  getSeatMap,
+  getSeatSessionToken,
+  holdSeats,
+  SeatApiError,
+} from './seat-api';
 
 jest.mock('./seat-api', () => {
   class MockSeatApiError extends Error {
@@ -218,5 +223,126 @@ describe('SeatMap', () => {
         name: 'Confirmer et réserver temporairement',
       }),
     ).toHaveProperty('disabled', false);
+  });
+
+  it('shows an explicit error when the browser cannot create a session', async () => {
+    jest.mocked(getSeatSessionToken).mockImplementationOnce(() => {
+      throw new Error('Storage unavailable');
+    });
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Impossible de créer une session de sélection sur cet appareil.',
+    );
+    expect(getSeatMap).not.toHaveBeenCalled();
+  });
+
+  it('recovers from a failed availability refresh on the next poll', async () => {
+    jest.useFakeTimers();
+    jest
+      .mocked(getSeatMap)
+      .mockRejectedValueOnce(new Error('API unavailable'))
+      .mockResolvedValue(initialSeatMap);
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole('alert')).toBeTruthy();
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1000);
+    });
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Rangée A, siège 1, libre' }),
+    ).toBeTruthy();
+  });
+
+  it('shows an empty state when a screening has no configured seats', async () => {
+    jest.mocked(getSeatMap).mockResolvedValue({
+      showtimeId: 'showtime-1',
+      seats: [],
+    });
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+
+    expect(
+      await screen.findByText('Aucun siège n’est configuré pour cette séance.'),
+    ).toBeTruthy();
+  });
+
+  it('refreshes availability when another session takes a selected seat', async () => {
+    jest.useFakeTimers();
+    jest
+      .mocked(getSeatMap)
+      .mockResolvedValueOnce(initialSeatMap)
+      .mockResolvedValueOnce(initialSeatMap);
+    jest
+      .mocked(holdSeats)
+      .mockRejectedValue(
+        new SeatApiError(409, 'SEAT_UNAVAILABLE', 'Seat is unavailable.'),
+      );
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Rangée A, siège 1, libre' }),
+    );
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Confirmer et réserver temporairement',
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(
+      screen.getByText(
+        'Un siège de votre sélection vient d’être pris. Actualisation de la disponibilité en cours.',
+      ),
+    ).toBeTruthy();
+    expect(getSeatMap).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('blocks confirmation and reports non-conflict hold failures', async () => {
+    jest.mocked(getSeatMap).mockResolvedValue(initialSeatMap);
+    jest.mocked(holdSeats).mockRejectedValue(new Error('Network unavailable'));
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+    await screen.findByRole('button', { name: 'Rangée A, siège 1, libre' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Rangée A, siège 1, libre' }),
+    );
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: 'Confirmer et réserver temporairement',
+        }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'La réservation temporaire n’a pas pu être créée.',
+    );
+    expect(
+      screen.getByRole('button', {
+        name: 'Confirmer et réserver temporairement',
+      }),
+    ).toHaveProperty('disabled', true);
   });
 });
