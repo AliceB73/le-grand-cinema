@@ -1,8 +1,9 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { Genre } from '@prisma/client';
 import request from 'supertest';
-import { createApp } from './app.js';
+import { createApp, type SeatService } from './app.js';
 import * as programmeService from './programme/programme.service.js';
+import { SeatUnavailableError } from './seats/seat.service.js';
 
 describe('API baseline', () => {
   it('returns a healthy status', async () => {
@@ -19,6 +20,24 @@ describe('API baseline', () => {
     expect(response.body.openapi).toBe('3.0.0');
     expect(response.body.paths['/api/health']).toBeDefined();
     expect(response.body.paths['/api/programme']).toBeDefined();
+    expect(
+      response.body.paths['/api/showtimes/{showtimeId}/seats'],
+    ).toBeDefined();
+    expect(
+      response.body.paths['/api/showtimes/{showtimeId}/seats/holds'],
+    ).toBeDefined();
+    expect(
+      response.body.paths['/api/showtimes/{showtimeId}/seats'].get.parameters,
+    ).toContainEqual(
+      expect.objectContaining({
+        name: 'x-seat-session-token',
+        in: 'header',
+      }),
+    );
+    expect(
+      response.body.paths['/api/showtimes/{showtimeId}/seats/holds'].post
+        .requestBody,
+    ).toBeDefined();
   });
 
   it('returns the validated public programme', async () => {
@@ -77,5 +96,91 @@ describe('API baseline', () => {
     });
     expect(logError).toHaveBeenCalled();
     logError.mockRestore();
+  });
+
+  it('returns the seat map for an anonymous session', async () => {
+    const seatService: SeatService = {
+      getSeatMap: async () => ({
+        showtimeId: 'showtime-1',
+        seats: [
+          {
+            id: 'seat-1',
+            rowNumber: 'A',
+            seatNumber: 1,
+            status: 'available',
+            heldByCurrentSession: false,
+            expiresAt: null,
+          },
+        ],
+      }),
+      createTemporarySeatHold: async () => null,
+    };
+
+    const response = await request(createApp(undefined, seatService))
+      .get('/api/showtimes/showtime-1/seats')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b');
+
+    expect(response.status).toBe(200);
+    expect(response.body.seats[0]).toMatchObject({
+      id: 'seat-1',
+      status: 'available',
+    });
+  });
+
+  it('rejects seat-map requests without a valid anonymous session token', async () => {
+    const response = await request(createApp()).get(
+      '/api/showtimes/showtime-1/seats',
+    );
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('INVALID_SEAT_MAP_REQUEST');
+  });
+
+  it('creates a temporary seat hold for ten minutes', async () => {
+    const seatService: SeatService = {
+      getSeatMap: async () => null,
+      createTemporarySeatHold: async () => ({
+        heldSeatIds: ['seat-1'],
+        expiresAt: '2026-10-11T10:10:00.000Z',
+      }),
+    };
+
+    const response = await request(createApp(undefined, seatService))
+      .post('/api/showtimes/showtime-1/seats/holds')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b')
+      .send({ seatIds: ['seat-1'] });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      heldSeatIds: ['seat-1'],
+      expiresAt: '2026-10-11T10:10:00.000Z',
+    });
+  });
+
+  it('rejects duplicate seats in a hold request', async () => {
+    const response = await request(createApp())
+      .post('/api/showtimes/showtime-1/seats/holds')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b')
+      .send({ seatIds: ['seat-1', 'seat-1'] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('INVALID_SEAT_HOLD_REQUEST');
+  });
+
+  it('returns a conflict when seats became unavailable', async () => {
+    const seatService: SeatService = {
+      getSeatMap: async () => null,
+      createTemporarySeatHold: async () => {
+        throw new SeatUnavailableError(['seat-1']);
+      },
+    };
+
+    const response = await request(createApp(undefined, seatService))
+      .post('/api/showtimes/showtime-1/seats/holds')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b')
+      .send({ seatIds: ['seat-1'] });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toBe('SEATS_UNAVAILABLE');
   });
 });

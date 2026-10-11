@@ -30,4 +30,19 @@ test('home page displays upcoming cinema screenings', async ({ page }) => {
     page.getByRole('heading', { name: 'Les Veilleurs du Phare' }),
   ).toBeVisible();
   await expect(page.getByText('Salle B')).toBeVisible();
+  await expect(page.getByText('Disponible')).toBeVisible();
+
+  await page
+    .getByRole('button', { name: /Voir les détails de la séance/ })
+    .click();
+
+  const detailsPanel = page.getByRole('dialog');
+  await expect(detailsPanel.getByText('Détails de la séance')).toBeVisible();
+  await expect(
+    detailsPanel.getByRole('heading', { name: 'Les Veilleurs du Phare' }),
+  ).toBeVisible();
+  await expect(detailsPanel.getByRole('status')).toHaveText('Disponible');
+  await expect(
+    detailsPanel.getByRole('button', { name: 'Choisir mes places' }),
+  ).toBeVisible();
 });

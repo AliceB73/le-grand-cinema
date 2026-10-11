@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import SeatMap from './SeatMap';
 import { getProgramme, type ProgrammeItem } from './programme-api';
 
 const dateTimeFormatter = new Intl.DateTimeFormat('fr-FR', {
@@ -474,102 +475,110 @@ export default function App() {
           }}
         >
           <section
-            aria-labelledby="screening-panel-title"
+            aria-labelledby={
+              seatSelectionRequested
+                ? 'seat-map-title'
+                : 'screening-panel-title'
+            }
             aria-modal="true"
             className="h-full w-full overflow-y-auto border-l border-slate-700 bg-slate-900 p-6 shadow-2xl sm:max-w-xl sm:p-8"
             ref={panelRef}
             role="dialog"
             tabIndex={-1}
           >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-300">
-                  Détails de la séance
-                </p>
-                <h2
-                  className="mt-2 text-3xl font-bold"
-                  id="screening-panel-title"
-                >
-                  {selectedScreening.title}
-                </h2>
-              </div>
-              <button
-                aria-label="Fermer les détails de la séance"
-                className="shrink-0 rounded-lg border border-slate-600 px-3 py-2 font-semibold text-slate-100 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
-                onClick={() => {
-                  setSelectedScreeningId(null);
-                  setSeatSelectionRequested(false);
-                }}
-                ref={closeButtonRef}
-                type="button"
-              >
-                Fermer
-              </button>
-            </div>
-            <div className="mt-6 aspect-[2/3] max-h-[28rem] overflow-hidden rounded-xl bg-slate-800">
-              {selectedScreening.posterUrl ? (
-                <img
-                  alt={`Affiche du film ${selectedScreening.title}`}
-                  className="h-full w-full object-cover"
-                  src={selectedScreening.posterUrl}
-                />
-              ) : (
-                <div
-                  aria-label={`Affiche indisponible pour ${selectedScreening.title}`}
-                  className="flex h-full items-center justify-center p-8 text-center text-slate-400"
-                  role="img"
-                >
-                  Affiche indisponible
+            {seatSelectionRequested ? (
+              <SeatMap
+                onClose={() => setSeatSelectionRequested(false)}
+                screening={selectedScreening}
+              />
+            ) : (
+              <>
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold uppercase tracking-[0.2em] text-amber-300">
+                      Détails de la séance
+                    </p>
+                    <h2
+                      className="mt-2 text-3xl font-bold"
+                      id="screening-panel-title"
+                    >
+                      {selectedScreening.title}
+                    </h2>
+                  </div>
+                  <button
+                    aria-label="Fermer les détails de la séance"
+                    className="shrink-0 rounded-lg border border-slate-600 px-3 py-2 font-semibold text-slate-100 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+                    onClick={() => {
+                      setSelectedScreeningId(null);
+                      setSeatSelectionRequested(false);
+                    }}
+                    ref={closeButtonRef}
+                    type="button"
+                  >
+                    Fermer
+                  </button>
                 </div>
-              )}
-            </div>
-            <p className="mt-5 text-amber-300">
-              {selectedScreening.genreLabel}
-              <span aria-hidden="true"> · </span>
-              {selectedScreening.duration} min
-            </p>
-            <dl className="mt-4 space-y-3 border-t border-slate-700 pt-4 text-slate-300">
-              <div>
-                <dt className="font-semibold text-white">Séance</dt>
-                <dd>
-                  {dateTimeFormatter.format(
-                    new Date(selectedScreening.startTime),
+                <div className="mt-6 aspect-[2/3] max-h-[28rem] overflow-hidden rounded-xl bg-slate-800">
+                  {selectedScreening.posterUrl ? (
+                    <img
+                      alt={`Affiche du film ${selectedScreening.title}`}
+                      className="h-full w-full object-cover"
+                      src={selectedScreening.posterUrl}
+                    />
+                  ) : (
+                    <div
+                      aria-label={`Affiche indisponible pour ${selectedScreening.title}`}
+                      className="flex h-full items-center justify-center p-8 text-center text-slate-400"
+                      role="img"
+                    >
+                      Affiche indisponible
+                    </div>
                   )}
-                </dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-white">Salle</dt>
-                <dd>{selectedScreening.roomName}</dd>
-              </div>
-              <div>
-                <dt className="font-semibold text-white">Remplissage</dt>
-                <dd
-                  className={`mt-1 inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${getOccupancyPresentation(selectedScreening.occupancyStatus).className}`}
-                  role="status"
-                >
-                  {
-                    getOccupancyPresentation(selectedScreening.occupancyStatus)
-                      .label
-                  }
-                </dd>
-              </div>
-            </dl>
-            {selectedScreening.occupancyStatus !== 'FULL' && (
-              <div className="mt-8">
-                <button
-                  className="w-full rounded-lg bg-amber-300 px-5 py-3 font-bold text-slate-950 hover:bg-amber-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"
-                  onClick={() => setSeatSelectionRequested(true)}
-                  type="button"
-                >
-                  Choisir mes places
-                </button>
-                {seatSelectionRequested && (
-                  <p className="mt-3 text-sm text-slate-300" role="status">
-                    Le choix des places sera disponible dans l’étape suivante de
-                    la réservation.
-                  </p>
+                </div>
+                <p className="mt-5 text-amber-300">
+                  {selectedScreening.genreLabel}
+                  <span aria-hidden="true"> · </span>
+                  {selectedScreening.duration} min
+                </p>
+                <dl className="mt-4 space-y-3 border-t border-slate-700 pt-4 text-slate-300">
+                  <div>
+                    <dt className="font-semibold text-white">Séance</dt>
+                    <dd>
+                      {dateTimeFormatter.format(
+                        new Date(selectedScreening.startTime),
+                      )}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-white">Salle</dt>
+                    <dd>{selectedScreening.roomName}</dd>
+                  </div>
+                  <div>
+                    <dt className="font-semibold text-white">Remplissage</dt>
+                    <dd
+                      className={`mt-1 inline-flex rounded-full border px-3 py-1 text-sm font-semibold ${getOccupancyPresentation(selectedScreening.occupancyStatus).className}`}
+                      role="status"
+                    >
+                      {
+                        getOccupancyPresentation(
+                          selectedScreening.occupancyStatus,
+                        ).label
+                      }
+                    </dd>
+                  </div>
+                </dl>
+                {selectedScreening.occupancyStatus !== 'FULL' && (
+                  <div className="mt-8">
+                    <button
+                      className="w-full rounded-lg bg-amber-300 px-5 py-3 font-bold text-slate-950 hover:bg-amber-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"
+                      onClick={() => setSeatSelectionRequested(true)}
+                      type="button"
+                    >
+                      Choisir mes places
+                    </button>
+                  </div>
                 )}
-              </div>
+              </>
             )}
           </section>
         </div>

@@ -14,6 +14,17 @@ import { getProgramme } from './programme-api';
 jest.mock('./programme-api', () => ({
   getProgramme: jest.fn(),
 }));
+jest.mock('./SeatMap', () => ({
+  __esModule: true,
+  default: ({ onClose }: { onClose: () => void }) => (
+    <section>
+      <h2 id="seat-map-title">Plan de salle test</h2>
+      <button onClick={onClose} type="button">
+        Retour au détail
+      </button>
+    </section>
+  ),
+}));
 
 describe('App', () => {
   afterEach(() => {
@@ -50,7 +61,7 @@ describe('App', () => {
     ).toBeTruthy();
   });
 
-  it('opens a screening details panel and closes it with Escape', async () => {
+  it('opens the details panel, enters seat selection, and closes with Escape', async () => {
     jest.mocked(getProgramme).mockResolvedValue([
       {
         id: 'screening-1',
@@ -66,7 +77,7 @@ describe('App', () => {
     ]);
 
     render(<App />);
-
+    await screen.findByRole('heading', { name: 'Les Veilleurs du Phare' });
     const cardButton = await screen.findByRole('button', {
       name: /Voir les détails de la séance Les Veilleurs du Phare/,
     });
@@ -87,6 +98,16 @@ describe('App', () => {
     expect(document.activeElement).toBe(chooseSeatsButton);
     fireEvent.keyDown(chooseSeatsButton, { key: 'Tab' });
     expect(document.activeElement).toBe(closeButton);
+
+    fireEvent.click(chooseSeatsButton);
+    expect(
+      screen.getByRole('heading', { name: 'Plan de salle test' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retour au détail' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Choisir mes places' }),
+    ).toBeTruthy();
 
     fireEvent.keyDown(document, { key: 'Escape' });
 
@@ -125,7 +146,7 @@ describe('App', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('does not offer booking for a full screening', async () => {
+  it('does not offer seat selection for a full screening and closes with Escape', async () => {
     jest.mocked(getProgramme).mockResolvedValue([
       {
         id: 'screening-full',
@@ -141,17 +162,20 @@ describe('App', () => {
     ]);
 
     render(<App />);
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: /Voir les détails de la séance Séance complète/,
-      }),
-    );
+    const cardButton = await screen.findByRole('button', {
+      name: /Voir les détails de la séance Séance complète/,
+    });
+    fireEvent.click(cardButton);
 
     const panel = await screen.findByRole('dialog');
     expect(within(panel).getByText('Complet')).toBeTruthy();
     expect(
       within(panel).queryByRole('button', { name: 'Choisir mes places' }),
     ).toBeNull();
+    fireEvent.keyDown(document, { key: 'Escape' });
+
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(cardButton);
   });
 
   it('refreshes occupancy statuses every five seconds without reloading', async () => {
@@ -188,16 +212,15 @@ describe('App', () => {
     render(<App />);
     await act(async () => {
       await Promise.resolve();
-    });
-
-    expect(screen.getByText('Disponible')).toBeTruthy();
-    await act(async () => {
-      jest.advanceTimersByTime(5000);
       await Promise.resolve();
     });
+    expect(screen.getByText('Disponible')).toBeTruthy();
 
-    expect(getProgramme).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(5000);
+    });
     expect(screen.getByText('Dernières places')).toBeTruthy();
+    expect(getProgramme).toHaveBeenCalledTimes(2);
   });
 
   it('shows an explicit empty-programme state', async () => {
