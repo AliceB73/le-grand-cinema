@@ -12,6 +12,7 @@ import {
   getSeatMap,
   getSeatSessionToken,
   holdSeats,
+  releaseSeats,
   SeatApiError,
 } from './seat-api';
 
@@ -30,6 +31,7 @@ jest.mock('./seat-api', () => {
     getSeatMap: jest.fn(),
     getSeatSessionToken: jest.fn(() => '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b'),
     holdSeats: jest.fn(),
+    releaseSeats: jest.fn(),
     SeatApiError: MockSeatApiError,
   };
 });
@@ -48,6 +50,7 @@ const screening: ProgrammeItem = {
 
 const initialSeatMap = {
   showtimeId: 'showtime-1',
+  priceCents: 950,
   seats: [
     {
       id: 'seat-free',
@@ -81,8 +84,24 @@ const initialSeatMap = {
       heldByCurrentSession: false,
       expiresAt: null,
     },
+    {
+      id: 'seat-free-3',
+      rowNumber: 'B',
+      seatNumber: 2,
+      status: 'available' as const,
+      heldByCurrentSession: false,
+      expiresAt: null,
+    },
   ],
 };
+
+async function clickAndWait(element: HTMLElement) {
+  await act(async () => {
+    fireEvent.click(element);
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+}
 
 describe('SeatMap', () => {
   afterEach(() => {
@@ -91,28 +110,198 @@ describe('SeatMap', () => {
     jest.mocked(getSeatMap).mockReset();
     jest.mocked(getSeatSessionToken).mockClear();
     jest.mocked(holdSeats).mockReset();
+    jest.mocked(releaseSeats).mockReset();
   });
 
-  it('shows accessible states, supports multi-selection, and confirms a ten-minute hold', async () => {
+  it('locks seats immediately, allows a fare per seat, and recalculates the total', async () => {
+    jest.mocked(getSeatMap).mockResolvedValue(initialSeatMap);
+    jest.mocked(holdSeats).mockImplementation(async (_showtime, seatIds) => ({
+      heldSeatIds: seatIds,
+      expiresAt: '2026-10-11T19:10:00.000Z',
+    }));
+    jest.mocked(releaseSeats).mockResolvedValue();
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+
+    const seat1 = await screen.findByRole('button', {
+      name: 'Rangée A, siège 1, libre',
+    });
+    await clickAndWait(seat1);
+    await clickAndWait(
+      screen.getByRole('button', { name: 'Rangée B, siège 1, libre' }),
+    );
+    await clickAndWait(
+      screen.getByRole('button', { name: 'Rangée B, siège 2, libre' }),
+    );
+
+    expect(holdSeats).toHaveBeenNthCalledWith(
+      1,
+      'showtime-1',
+      ['seat-free'],
+      '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b',
+    );
+    expect(holdSeats).toHaveBeenNthCalledWith(
+      2,
+      'showtime-1',
+      ['seat-free-2'],
+      '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b',
+    );
+    expect(holdSeats).toHaveBeenNthCalledWith(
+      3,
+      'showtime-1',
+      ['seat-free-3'],
+      '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b',
+    );
+
+    fireEvent.change(screen.getByLabelText('Rangée A, siège 1'), {
+      target: { value: 'reduced' },
+    });
+    fireEvent.change(screen.getByLabelText('Rangée B, siège 2'), {
+      target: { value: 'reduced' },
+    });
+
+    expect(screen.getByText(/Total : 19,00/)).toBeTruthy();
+    expect(
+      screen
+        .getByRole('button', {
+          name: 'Rangée A, siège 1, sélectionné',
+        })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(
+      screen.queryByRole('button', {
+        name: 'Confirmer et réserver temporairement',
+      }),
+    ).toBeNull();
+  });
+
+  it('releases a selected seat immediately when it is deselected', async () => {
+    jest.mocked(getSeatMap).mockResolvedValue(initialSeatMap);
+    jest.mocked(holdSeats).mockResolvedValue({
+      heldSeatIds: ['seat-free'],
+      expiresAt: '2026-10-11T19:10:00.000Z',
+    });
+    jest.mocked(releaseSeats).mockResolvedValue();
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+
+    await clickAndWait(
+      await screen.findByRole('button', {
+        name: 'Rangée A, siège 1, libre',
+      }),
+    );
+    await clickAndWait(
+      screen.getByRole('button', {
+        name: 'Rangée A, siège 1, sélectionné',
+      }),
+    );
+
+    expect(releaseSeats).toHaveBeenCalledWith(
+      'showtime-1',
+      ['seat-free'],
+      '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b',
+    );
+    expect(screen.getByText('Aucun siège sélectionné.')).toBeTruthy();
+    expect(screen.getByText(/Total : 0,00/)).toBeTruthy();
+  });
+
+  it('rounds a half-cent reduced fare to the nearest cent', async () => {
+    jest.mocked(getSeatMap).mockResolvedValue({
+      ...initialSeatMap,
+      priceCents: 951,
+    });
+    jest.mocked(holdSeats).mockResolvedValue({
+      heldSeatIds: ['seat-free'],
+      expiresAt: '2026-10-11T19:10:00.000Z',
+    });
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+    await clickAndWait(
+      await screen.findByRole('button', {
+        name: 'Rangée A, siège 1, libre',
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('Rangée A, siège 1'), {
+      target: { value: 'reduced' },
+    });
+
+    expect(screen.getByText(/Total : 4,76/)).toBeTruthy();
+  });
+
+  it('releases all selected seats before returning to the programme', async () => {
+    const onClose = jest.fn();
+    jest.mocked(getSeatMap).mockResolvedValue(initialSeatMap);
+    jest.mocked(holdSeats).mockResolvedValue({
+      heldSeatIds: ['seat-free'],
+      expiresAt: '2026-10-11T19:10:00.000Z',
+    });
+    jest.mocked(releaseSeats).mockResolvedValue();
+
+    render(<SeatMap onClose={onClose} screening={screening} />);
+    await clickAndWait(
+      await screen.findByRole('button', {
+        name: 'Rangée A, siège 1, libre',
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Retour à la programmation' }),
+    );
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(releaseSeats).toHaveBeenLastCalledWith(
+      'showtime-1',
+      ['seat-free'],
+      '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b',
+    );
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not select a seat that another session takes concurrently', async () => {
+    jest.mocked(getSeatMap).mockResolvedValue(initialSeatMap);
+    jest
+      .mocked(holdSeats)
+      .mockRejectedValue(
+        new SeatApiError(409, 'SEATS_UNAVAILABLE', 'Seat is unavailable.'),
+      );
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+    await clickAndWait(
+      await screen.findByRole('button', {
+        name: 'Rangée A, siège 1, libre',
+      }),
+    );
+
+    expect(
+      await screen.findByText(
+        'Ce siège vient d’être pris par un autre spectateur. Actualisation de la disponibilité en cours.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Aucun siège sélectionné.')).toBeTruthy();
+  });
+
+  it('removes and announces a hold that expires without payment', async () => {
     jest.useFakeTimers();
     jest
       .mocked(getSeatMap)
       .mockResolvedValueOnce(initialSeatMap)
-      .mockResolvedValueOnce({
+      .mockResolvedValue({
         ...initialSeatMap,
         seats: initialSeatMap.seats.map((seat) =>
           seat.id === 'seat-free'
             ? {
                 ...seat,
-                status: 'held' as const,
-                heldByCurrentSession: true,
-                expiresAt: '2026-10-11T19:10:00.000Z',
+                status: 'available' as const,
+                heldByCurrentSession: false,
+                expiresAt: null,
               }
             : seat,
         ),
       });
     jest.mocked(holdSeats).mockResolvedValue({
-      heldSeatIds: ['seat-free', 'seat-free-2'],
+      heldSeatIds: ['seat-free'],
       expiresAt: '2026-10-11T19:10:00.000Z',
     });
 
@@ -121,108 +310,23 @@ describe('SeatMap', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
-
-    const freeSeat = screen.getByRole('button', {
-      name: 'Rangée A, siège 1, libre',
-    });
-    const occupiedSeat = screen.getByRole('button', {
-      name: 'Rangée A, siège 2, occupé',
-    }) as HTMLButtonElement;
-    const heldSeat = screen.getByRole('button', {
-      name: 'Rangée A, siège 3, réservé temporairement',
-    }) as HTMLButtonElement;
-    expect(occupiedSeat.disabled).toBe(true);
-    expect(heldSeat.disabled).toBe(true);
-    expect(freeSeat.getAttribute('aria-pressed')).toBe('false');
-
-    fireEvent.click(freeSeat);
-    expect(freeSeat.getAttribute('aria-pressed')).toBe('true');
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Rangée B, siège 1, libre',
-      }),
-    );
-
-    await act(async () => {
-      fireEvent.click(
-        screen.getByRole('button', {
-          name: 'Confirmer et réserver temporairement',
-        }),
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(holdSeats).toHaveBeenCalledWith(
-      'showtime-1',
-      ['seat-free', 'seat-free-2'],
-      '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b',
-    );
-    expect(
-      screen.getByText(/Vos sièges sont réservés temporairement jusqu’à/),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('button', {
-        name: 'Rangée A, siège 1, réservé temporairement par vous',
-      }),
-    ).toHaveProperty('disabled', true);
-  });
-
-  it('removes a seat that becomes unavailable and requires a replacement', async () => {
-    jest.useFakeTimers();
-    jest
-      .mocked(getSeatMap)
-      .mockResolvedValueOnce(initialSeatMap)
-      .mockResolvedValue({
-        ...initialSeatMap,
-        seats: initialSeatMap.seats.map((seat) =>
-          seat.id === 'seat-free' ? { ...seat, status: 'held' as const } : seat,
-        ),
-      });
-
-    render(<SeatMap onClose={jest.fn()} screening={screening} />);
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    fireEvent.click(
+    await clickAndWait(
       screen.getByRole('button', { name: 'Rangée A, siège 1, libre' }),
     );
-    expect(
-      screen.getByRole('button', {
-        name: 'Confirmer et réserver temporairement',
-      }),
-    ).toHaveProperty('disabled', false);
-
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     await act(async () => {
       await jest.advanceTimersByTimeAsync(1000);
     });
 
     expect(
       screen.getByText(
-        'Un siège sélectionné est devenu indisponible et a été retiré. Choisissez un autre siège avant de valider.',
+        'Le verrou d’un siège a expiré ; il a été libéré et retiré de votre sélection.',
       ),
     ).toBeTruthy();
-    expect(
-      screen.getByRole('button', {
-        name: 'Rangée A, siège 1, réservé temporairement',
-      }),
-    ).toHaveProperty('disabled', true);
-    expect(
-      screen.getByRole('button', {
-        name: 'Confirmer et réserver temporairement',
-      }),
-    ).toHaveProperty('disabled', true);
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Rangée B, siège 1, libre' }),
-    );
-    expect(
-      screen.getByRole('button', {
-        name: 'Confirmer et réserver temporairement',
-      }),
-    ).toHaveProperty('disabled', false);
+    expect(screen.getByText('Aucun siège sélectionné.')).toBeTruthy();
   });
 
   it('shows an explicit error when the browser cannot create a session', async () => {
@@ -238,33 +342,9 @@ describe('SeatMap', () => {
     expect(getSeatMap).not.toHaveBeenCalled();
   });
 
-  it('recovers from a failed availability refresh on the next poll', async () => {
-    jest.useFakeTimers();
-    jest
-      .mocked(getSeatMap)
-      .mockRejectedValueOnce(new Error('API unavailable'))
-      .mockResolvedValue(initialSeatMap);
-
-    render(<SeatMap onClose={jest.fn()} screening={screening} />);
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(screen.getByRole('alert')).toBeTruthy();
-
-    await act(async () => {
-      await jest.advanceTimersByTimeAsync(1000);
-    });
-
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Rangée A, siège 1, libre' }),
-    ).toBeTruthy();
-  });
-
   it('shows an empty state when a screening has no configured seats', async () => {
     jest.mocked(getSeatMap).mockResolvedValue({
-      showtimeId: 'showtime-1',
+      ...initialSeatMap,
       seats: [],
     });
 
@@ -275,74 +355,31 @@ describe('SeatMap', () => {
     ).toBeTruthy();
   });
 
-  it('refreshes availability when another session takes a selected seat', async () => {
-    jest.useFakeTimers();
-    jest
-      .mocked(getSeatMap)
-      .mockResolvedValueOnce(initialSeatMap)
-      .mockResolvedValueOnce(initialSeatMap);
-    jest
-      .mocked(holdSeats)
-      .mockRejectedValue(
-        new SeatApiError(409, 'SEAT_UNAVAILABLE', 'Seat is unavailable.'),
-      );
-
-    render(<SeatMap onClose={jest.fn()} screening={screening} />);
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Rangée A, siège 1, libre' }),
-    );
-
-    await act(async () => {
-      fireEvent.click(
-        screen.getByRole('button', {
-          name: 'Confirmer et réserver temporairement',
-        }),
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(
-      screen.getByText(
-        'Un siège de votre sélection vient d’être pris. Actualisation de la disponibilité en cours.',
-      ),
-    ).toBeTruthy();
-    expect(getSeatMap).toHaveBeenCalledTimes(2);
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  it('blocks confirmation and reports non-conflict hold failures', async () => {
+  it('reports an explicit error when releasing a selected seat fails', async () => {
     jest.mocked(getSeatMap).mockResolvedValue(initialSeatMap);
-    jest.mocked(holdSeats).mockRejectedValue(new Error('Network unavailable'));
+    jest.mocked(holdSeats).mockResolvedValue({
+      heldSeatIds: ['seat-free'],
+      expiresAt: '2026-10-11T19:10:00.000Z',
+    });
+    jest
+      .mocked(releaseSeats)
+      .mockRejectedValue(new Error('Network unavailable'));
 
     render(<SeatMap onClose={jest.fn()} screening={screening} />);
-    await screen.findByRole('button', { name: 'Rangée A, siège 1, libre' });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Rangée A, siège 1, libre' }),
+    await clickAndWait(
+      await screen.findByRole('button', {
+        name: 'Rangée A, siège 1, libre',
+      }),
     );
-
-    await act(async () => {
-      fireEvent.click(
-        screen.getByRole('button', {
-          name: 'Confirmer et réserver temporairement',
-        }),
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
+    await clickAndWait(
+      screen.getByRole('button', {
+        name: 'Rangée A, siège 1, sélectionné',
+      }),
+    );
 
     expect((await screen.findByRole('alert')).textContent).toContain(
-      'La réservation temporaire n’a pas pu être créée.',
+      'Le siège n’a pas pu être libéré.',
     );
-    expect(
-      screen.getByRole('button', {
-        name: 'Confirmer et réserver temporairement',
-      }),
-    ).toHaveProperty('disabled', true);
+    expect(screen.getByText(/Total : 9,50/)).toBeTruthy();
   });
 });

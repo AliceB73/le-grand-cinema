@@ -4,6 +4,7 @@ import { prisma } from '../data/prisma.js';
 import {
   createTemporarySeatHold,
   getSeatMap,
+  releaseTemporarySeatHold,
   SEAT_HOLD_DURATION_MS,
   SeatUnavailableError,
   type SeatRepository,
@@ -55,10 +56,14 @@ function createRepository(
       .fn<SeatRepository['findShowtimeSeats']>()
       .mockResolvedValue({
         exists: true,
+        priceCents: 950,
         seats,
       }),
     createTemporaryHold: jest
       .fn<SeatRepository['createTemporaryHold']>()
+      .mockResolvedValue(),
+    releaseTemporaryHold: jest
+      .fn<SeatRepository['releaseTemporaryHold']>()
       .mockResolvedValue(),
   };
 }
@@ -104,6 +109,7 @@ describe('seat service', () => {
       heldByCurrentSession: false,
       expiresAt: '2026-10-11T10:10:00.000Z',
     });
+    expect(result?.priceCents).toBe(950);
     expect(JSON.stringify(result)).not.toContain(sessionToken);
   });
 
@@ -173,6 +179,7 @@ describe('seat service', () => {
     const repository = createRepository();
     repository.findShowtimeSeats.mockResolvedValue({
       exists: false,
+      priceCents: 0,
       seats: [],
     });
 
@@ -190,6 +197,26 @@ describe('seat service', () => {
     ).resolves.toBeNull();
   });
 
+  it('releases only holds owned by the anonymous session', async () => {
+    const repository = createRepository();
+
+    await expect(
+      releaseTemporarySeatHold(
+        'showtime-1',
+        ['seat-free', 'seat-held'],
+        sessionToken,
+        repository,
+        now,
+      ),
+    ).resolves.toBe(true);
+    expect(repository.releaseTemporaryHold).toHaveBeenCalledWith(
+      'showtime-1',
+      ['seat-free', 'seat-held'],
+      'c0620acca9d2a3ed0a2383694af18c9d057faa89191268bf9082ca15b98ba421',
+      now,
+    );
+  });
+
   it('loads and maps seats using the Prisma repository by default', async () => {
     const findUnique = jest
       .spyOn(prisma.showtime, 'findUnique')
@@ -198,7 +225,7 @@ describe('seat service', () => {
         startTime: now,
         movieId: 'movie-1',
         roomId: 'Salle A',
-        price: 9.5,
+        price: 9.505,
         createdAt: now,
         updatedAt: now,
       });
@@ -217,6 +244,7 @@ describe('seat service', () => {
       getSeatMap('showtime-1', sessionToken, undefined, now),
     ).resolves.toEqual({
       showtimeId: 'showtime-1',
+      priceCents: 951,
       seats: [
         {
           id: 'seat-free',
@@ -231,7 +259,7 @@ describe('seat service', () => {
 
     expect(findUnique).toHaveBeenCalledWith({
       where: { id: 'showtime-1' },
-      select: { id: true },
+      select: { id: true, price: true },
     });
     expect(findMany).toHaveBeenCalledWith({
       where: { showtimeId: 'showtime-1' },
@@ -326,6 +354,66 @@ describe('seat service', () => {
       data: { holdId: 'hold-1' },
     });
     expect(transactionSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses a transaction to release only unexpired holds belonging to the session', async () => {
+    jest.spyOn(prisma.showtime, 'findUnique').mockResolvedValue({
+      id: 'showtime-1',
+      startTime: now,
+      movieId: 'movie-1',
+      roomId: 'Salle A',
+      price: 9.5,
+      createdAt: now,
+      updatedAt: now,
+    });
+    jest.spyOn(prisma.seat, 'findMany').mockResolvedValue([]);
+    const updateMany = jest
+      .fn<(args: object) => Promise<{ count: number }>>()
+      .mockResolvedValue({ count: 1 });
+    const deleteMany = jest
+      .fn<(args: object) => Promise<{ count: number }>>()
+      .mockResolvedValue({ count: 1 });
+    const transaction = {
+      seat: { updateMany },
+      seatHold: { deleteMany },
+    } as unknown as Prisma.TransactionClient;
+    jest
+      .spyOn(prisma, '$transaction')
+      .mockImplementation((callback) => callback(transaction));
+
+    await expect(
+      releaseTemporarySeatHold(
+        'showtime-1',
+        ['seat-free'],
+        sessionToken,
+        undefined,
+        now,
+      ),
+    ).resolves.toBe(true);
+
+    expect(updateMany).toHaveBeenCalledWith({
+      where: {
+        showtimeId: 'showtime-1',
+        id: { in: ['seat-free'] },
+        bookingId: null,
+        hold: {
+          is: {
+            tokenHash:
+              'c0620acca9d2a3ed0a2383694af18c9d057faa89191268bf9082ca15b98ba421',
+            expiresAt: { gt: now },
+          },
+        },
+      },
+      data: { holdId: null },
+    });
+    expect(deleteMany).toHaveBeenCalledWith({
+      where: {
+        tokenHash:
+          'c0620acca9d2a3ed0a2383694af18c9d057faa89191268bf9082ca15b98ba421',
+        expiresAt: { gt: now },
+        seats: { none: {} },
+      },
+    });
   });
 
   it('rolls back the transaction when a seat is concurrently unavailable', async () => {

@@ -12,6 +12,7 @@ const seatMapItemSchema = z.object({
 
 const seatMapSchema = z.object({
   showtimeId: z.string(),
+  priceCents: z.number().int().nonnegative(),
   seats: z.array(seatMapItemSchema),
 });
 
@@ -19,6 +20,7 @@ const seatHoldSchema = z.object({
   heldSeatIds: z.array(z.string()),
   expiresAt: z.iso.datetime(),
 });
+const seatReleaseSchema = z.object({ released: z.literal(true) });
 
 const apiErrorSchema = z.object({
   error: z.string(),
@@ -122,4 +124,27 @@ export async function holdSeats(
   );
 
   return parseResponse(response, seatHoldSchema);
+}
+
+export async function releaseSeats(
+  showtimeId: string,
+  seatIds: string[],
+  sessionToken: string,
+  keepalive = false,
+  fetcher: SeatFetcher = fetch,
+): Promise<void> {
+  const response = await fetcher(
+    `${apiBaseUrl}/api/showtimes/${encodeURIComponent(showtimeId)}/seats/holds`,
+    {
+      method: 'DELETE',
+      headers: {
+        'content-type': 'application/json',
+        'x-seat-session-token': sessionToken,
+      },
+      body: JSON.stringify({ seatIds }),
+      keepalive,
+    },
+  );
+
+  await parseResponse(response, seatReleaseSchema);
 }
