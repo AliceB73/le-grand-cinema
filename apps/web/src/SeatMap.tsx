@@ -4,6 +4,7 @@ import {
   getSeatMap,
   getSeatSessionToken,
   holdSeats,
+  releaseSeats,
   SeatApiError,
   type SeatMap as SeatMapData,
   type SeatMapItem,
@@ -17,6 +18,12 @@ const screeningTimeFormatter = new Intl.DateTimeFormat('fr-FR', {
   hour: '2-digit',
   minute: '2-digit',
 });
+const currencyFormatter = new Intl.NumberFormat('fr-FR', {
+  style: 'currency',
+  currency: 'EUR',
+});
+
+type TicketFare = 'full' | 'reduced';
 
 type SeatMapProps = {
   screening: ProgrammeItem;
@@ -45,11 +52,37 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [seatMap, setSeatMap] = useState<SeatMapData | null>(null);
   const [selectedSeatIds, setSelectedSeatIds] = useState<string[]>([]);
-  const [selectionNeedsReplacement, setSelectionNeedsReplacement] = useState(0);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [ticketFares, setTicketFares] = useState<Record<string, TicketFare>>(
+    {},
+  );
+  const [pendingSeatIds, setPendingSeatIds] = useState<string[]>([]);
+  const [isClosing, setIsClosing] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const selectedSeatIdsRef = useRef<string[]>([]);
+  const pendingSeatIdsRef = useRef<string[]>([]);
+  const pendingOperationsRef = useRef<Promise<void>[]>([]);
+  const sessionTokenRef = useRef<string | null>(null);
+
+  const updateSelectedSeatIds = useCallback(
+    (update: (current: string[]) => string[]) => {
+      const next = update(selectedSeatIdsRef.current);
+      selectedSeatIdsRef.current = next;
+      setSelectedSeatIds(next);
+    },
+    [],
+  );
+
+  const updatePendingSeatIds = useCallback(
+    (update: (current: string[]) => string[]) => {
+      const next = update(pendingSeatIdsRef.current);
+      pendingSeatIdsRef.current = next;
+      setPendingSeatIds(next);
+    },
+    [],
+  );
 
   useEffect(() => {
     try {
@@ -81,7 +114,7 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
         }
 
         setLoadError(
-          'La disponibilité des sièges est momentanément indisponible. La validation est suspendue ; réessayez dans un instant.',
+          'La disponibilité des sièges est momentanément indisponible. La sélection est suspendue ; réessayez dans un instant.',
         );
       }
     },
@@ -125,35 +158,66 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
   }, [refreshSeatMap, sessionToken]);
 
   useEffect(() => {
+    sessionTokenRef.current = sessionToken;
+  }, [sessionToken]);
+
+  useEffect(() => {
     if (!seatMap || selectedSeatIds.length === 0) {
       return;
     }
 
-    const availableIds = new Set(
+    const heldBySessionIds = new Set(
       seatMap.seats
-        .filter((seat) => seat.status === 'available')
+        .filter((seat) => seat.heldByCurrentSession)
         .map((seat) => seat.id),
     );
-    const unavailableIds = selectedSeatIds.filter(
-      (seatId) => !availableIds.has(seatId),
+    const pendingIds = new Set(pendingSeatIds);
+    const expiredIds = selectedSeatIds.filter(
+      (seatId) => !heldBySessionIds.has(seatId) && !pendingIds.has(seatId),
     );
 
-    if (unavailableIds.length === 0) {
+    if (expiredIds.length === 0) {
       return;
     }
 
-    setSelectedSeatIds((current) =>
-      current.filter((seatId) => availableIds.has(seatId)),
+    updateSelectedSeatIds((current) =>
+      current.filter((seatId) => !expiredIds.includes(seatId)),
     );
-    setSelectionNeedsReplacement((current) =>
-      Math.max(current, selectedSeatIds.length),
+    setTicketFares((current) =>
+      Object.fromEntries(
+        Object.entries(current).filter(
+          ([seatId]) => !expiredIds.includes(seatId),
+        ),
+      ),
     );
     setAnnouncement(
-      unavailableIds.length === 1
-        ? 'Un siège sélectionné est devenu indisponible et a été retiré. Choisissez un autre siège avant de valider.'
-        : 'Des sièges sélectionnés sont devenus indisponibles et ont été retirés. Choisissez des sièges de remplacement avant de valider.',
+      expiredIds.length === 1
+        ? 'Le verrou d’un siège a expiré ; il a été libéré et retiré de votre sélection.'
+        : 'Les verrous de plusieurs sièges ont expiré ; ils ont été libérés et retirés de votre sélection.',
     );
-  }, [seatMap, selectedSeatIds]);
+  }, [pendingSeatIds, seatMap, selectedSeatIds, updateSelectedSeatIds]);
+
+  useEffect(
+    () => () => {
+      const pendingOperations = pendingOperationsRef.current;
+      void Promise.all(pendingOperations)
+        .then(async () => {
+          const token = sessionTokenRef.current;
+          const seatIds = selectedSeatIdsRef.current;
+
+          if (token && seatIds.length > 0) {
+            await releaseSeats(screening.id, seatIds, token, true);
+          }
+        })
+        .catch((error) => {
+          console.error(
+            'Failed to release seats when closing the seat map.',
+            error,
+          );
+        });
+    },
+    [screening.id],
+  );
 
   const rows = useMemo(() => {
     const grouped = new Map<string, SeatMapItem[]>();
@@ -175,61 +239,141 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
       );
   }, [seatMap]);
 
-  function toggleSeat(seat: SeatMapItem) {
-    if (seat.status !== 'available') {
+  async function toggleSeat(seat: SeatMapItem) {
+    if (pendingSeatIdsRef.current.includes(seat.id)) {
       return;
     }
 
-    setSelectedSeatIds((current) => {
-      const next = current.includes(seat.id)
-        ? current.filter((seatId) => seatId !== seat.id)
-        : [...current, seat.id];
+    const isSelected = selectedSeatIdsRef.current.includes(seat.id);
+    const token = sessionTokenRef.current;
 
-      if (next.length >= selectionNeedsReplacement) {
-        setSelectionNeedsReplacement(0);
-      }
-
-      return next;
-    });
-  }
-
-  async function confirmSelection() {
-    if (!sessionToken || selectedSeatIds.length === 0 || loadError) {
+    if (!token) {
       return;
     }
 
-    setIsSubmitting(true);
+    setActionError(null);
     setAnnouncement('');
+    updatePendingSeatIds((current) => [...current, seat.id]);
 
     try {
-      const hold = await holdSeats(screening.id, selectedSeatIds, sessionToken);
-      setSelectedSeatIds([]);
-      setSelectionNeedsReplacement(0);
-      setAnnouncement(
-        `Vos ${hold.heldSeatIds.length > 1 ? 'sièges sont réservés' : 'siège est réservé'} temporairement jusqu’à ${new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(new Date(hold.expiresAt))}.`,
-      );
-      await refreshSeatMap();
+      if (isSelected) {
+        await releaseSeats(screening.id, [seat.id], token);
+        updateSelectedSeatIds((current) =>
+          current.filter((seatId) => seatId !== seat.id),
+        );
+        setTicketFares((current) => {
+          return Object.fromEntries(
+            Object.entries(current).filter(([seatId]) => seatId !== seat.id),
+          );
+        });
+        setSeatMap((current) =>
+          current
+            ? {
+                ...current,
+                seats: current.seats.map((item) =>
+                  item.id === seat.id
+                    ? {
+                        ...item,
+                        status: 'available',
+                        heldByCurrentSession: false,
+                        expiresAt: null,
+                      }
+                    : item,
+                ),
+              }
+            : current,
+        );
+        setAnnouncement('Le siège a été retiré et libéré.');
+      } else if (seat.status === 'available') {
+        const hold = await holdSeats(screening.id, [seat.id], token);
+        updateSelectedSeatIds((current) => [...current, seat.id]);
+        setTicketFares((current) => ({ ...current, [seat.id]: 'full' }));
+        setSeatMap((current) =>
+          current
+            ? {
+                ...current,
+                seats: current.seats.map((item) =>
+                  item.id === seat.id
+                    ? {
+                        ...item,
+                        status: 'held',
+                        heldByCurrentSession: true,
+                        expiresAt: hold.expiresAt,
+                      }
+                    : item,
+                ),
+              }
+            : current,
+        );
+        setAnnouncement(
+          `Le siège est verrouillé pendant 10 minutes, jusqu’à ${new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).format(new Date(hold.expiresAt))}.`,
+        );
+      } else if (seat.heldByCurrentSession) {
+        updateSelectedSeatIds((current) => [...current, seat.id]);
+        setTicketFares((current) => ({ ...current, [seat.id]: 'full' }));
+        setAnnouncement('Le siège déjà verrouillé par vous a été sélectionné.');
+      }
     } catch (error) {
       if (error instanceof SeatApiError && error.status === 409) {
         setAnnouncement(
-          'Un siège de votre sélection vient d’être pris. Actualisation de la disponibilité en cours.',
+          'Ce siège vient d’être pris par un autre spectateur. Actualisation de la disponibilité en cours.',
         );
         await refreshSeatMap();
       } else {
-        setLoadError(
-          'La réservation temporaire n’a pas pu être créée. Vérifiez votre connexion puis réessayez.',
+        setActionError(
+          isSelected
+            ? 'Le siège n’a pas pu être libéré. Il reste dans votre sélection ; réessayez.'
+            : 'Le siège n’a pas pu être verrouillé. Actualisez la disponibilité puis réessayez.',
         );
       }
     } finally {
-      setIsSubmitting(false);
+      updatePendingSeatIds((current) =>
+        current.filter((seatId) => seatId !== seat.id),
+      );
     }
   }
 
-  const canConfirm =
-    selectedSeatIds.length > 0 &&
-    selectedSeatIds.length >= selectionNeedsReplacement &&
-    !isSubmitting &&
-    loadError === null;
+  function handleSeatClick(seat: SeatMapItem) {
+    const operation = toggleSeat(seat);
+    pendingOperationsRef.current.push(operation);
+    void operation.finally(() => {
+      pendingOperationsRef.current = pendingOperationsRef.current.filter(
+        (pending) => pending !== operation,
+      );
+    });
+  }
+
+  async function closeSelection() {
+    const token = sessionTokenRef.current;
+    const seatIds = selectedSeatIdsRef.current;
+
+    if (token && seatIds.length > 0) {
+      setIsClosing(true);
+      setActionError(null);
+      try {
+        await releaseSeats(screening.id, seatIds, token);
+        updateSelectedSeatIds(() => []);
+        setTicketFares({});
+      } catch {
+        setActionError(
+          'Les sièges n’ont pas pu être libérés. Réessayez avant de quitter le plan.',
+        );
+        setIsClosing(false);
+        return;
+      }
+    }
+
+    onClose();
+  }
+
+  const fullPriceCents = seatMap?.priceCents ?? 0;
+  const reducedPriceCents = Math.round(fullPriceCents / 2);
+  const totalPriceCents = selectedSeatIds.reduce(
+    (total, seatId) =>
+      total +
+      (ticketFares[seatId] === 'reduced' ? reducedPriceCents : fullPriceCents),
+    0,
+  );
 
   return (
     <section
@@ -240,10 +384,11 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
       <div>
         <button
           className="mb-5 rounded-lg border border-slate-600 px-4 py-2 font-semibold text-slate-200 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
-          onClick={onClose}
+          disabled={isClosing || pendingSeatIds.length > 0}
+          onClick={() => void closeSelection()}
           type="button"
         >
-          Retour à la programmation
+          {isClosing ? 'Libération des sièges…' : 'Retour à la programmation'}
         </button>
         <p className="text-sm font-semibold text-amber-300">
           {screening.roomName}
@@ -268,6 +413,15 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
           role="alert"
         >
           {loadError}
+        </p>
+      )}
+
+      {actionError && (
+        <p
+          className="rounded-xl border border-rose-400/40 bg-rose-950/40 p-4 text-rose-100"
+          role="alert"
+        >
+          {actionError}
         </p>
       )}
 
@@ -333,6 +487,7 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
                   <div className="flex gap-2">
                     {seats.map((seat) => {
                       const isSelected = selectedSeatIds.includes(seat.id);
+                      const isPending = pendingSeatIds.includes(seat.id);
                       const label = statusLabel(seat, isSelected);
                       const marker = isSelected
                         ? '✓'
@@ -346,7 +501,9 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
                         : seat.status === 'occupied'
                           ? 'cursor-not-allowed border-rose-300 bg-rose-950 text-rose-100'
                           : seat.status === 'held'
-                            ? 'cursor-not-allowed border-sky-300 bg-sky-950 text-sky-100'
+                            ? seat.heldByCurrentSession
+                              ? 'border-sky-300 bg-sky-950 text-sky-100 hover:bg-sky-900'
+                              : 'cursor-not-allowed border-sky-300 bg-sky-950 text-sky-100'
                             : 'border-emerald-300 bg-emerald-950 text-emerald-100 hover:bg-emerald-800';
 
                       return (
@@ -354,9 +511,15 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
                           aria-label={`Rangée ${rowNumber}, siège ${seat.seatNumber}, ${label}`}
                           aria-pressed={isSelected}
                           className={`flex h-11 min-w-11 items-center justify-center gap-1 rounded-t-xl border text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${statusClass}`}
-                          disabled={seat.status !== 'available'}
+                          disabled={
+                            isPending ||
+                            (!isSelected &&
+                              seat.status !== 'available' &&
+                              !seat.heldByCurrentSession) ||
+                            (!isSelected && loadError !== null)
+                          }
                           key={seat.id}
-                          onClick={() => toggleSeat(seat)}
+                          onClick={() => handleSeatClick(seat)}
                           type="button"
                         >
                           <span>{seat.seatNumber}</span>
@@ -376,23 +539,87 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-4">
-            <p aria-live="polite" className="text-slate-200">
-              {selectedSeatIds.length === 0
-                ? 'Aucun siège sélectionné.'
-                : `${selectedSeatIds.length} siège${selectedSeatIds.length > 1 ? 's' : ''} sélectionné${selectedSeatIds.length > 1 ? 's' : ''}.`}
-            </p>
-            <button
-              className="rounded-lg bg-amber-300 px-5 py-3 font-semibold text-slate-950 hover:bg-amber-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!canConfirm}
-              onClick={() => void confirmSelection()}
-              type="button"
+          <section
+            aria-label="Billets sélectionnés et tarifs"
+            className="space-y-4 rounded-2xl border border-slate-700 bg-slate-900 p-5"
+          >
+            <div>
+              <h3 className="text-lg font-semibold text-white">
+                Billets sélectionnés
+              </h3>
+              <p className="mt-1 text-sm text-slate-300">
+                Plein tarif : {currencyFormatter.format(fullPriceCents / 100)} ·
+                tarif réduit :{' '}
+                {currencyFormatter.format(reducedPriceCents / 100)} (50 %)
+              </p>
+            </div>
+
+            {selectedSeatIds.length === 0 ? (
+              <p className="text-slate-300">Aucun siège sélectionné.</p>
+            ) : (
+              <ul className="space-y-3">
+                {selectedSeatIds.map((seatId) => {
+                  const seat = seatMap.seats.find((item) => item.id === seatId);
+
+                  if (!seat) {
+                    return null;
+                  }
+
+                  const fare = ticketFares[seatId] ?? 'full';
+                  const seatLabel = `Rangée ${seat.rowNumber}, siège ${seat.seatNumber}`;
+
+                  return (
+                    <li
+                      className="flex flex-wrap items-center justify-between gap-3"
+                      key={seatId}
+                    >
+                      <label
+                        className="font-medium text-slate-100"
+                        htmlFor={`ticket-fare-${seatId}`}
+                      >
+                        {seatLabel}
+                      </label>
+                      <select
+                        className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+                        id={`ticket-fare-${seatId}`}
+                        onChange={(event) =>
+                          setTicketFares((current) => ({
+                            ...current,
+                            [seatId]:
+                              event.target.value === 'reduced'
+                                ? 'reduced'
+                                : 'full',
+                          }))
+                        }
+                        value={fare}
+                      >
+                        <option value="full">
+                          Plein tarif —{' '}
+                          {currencyFormatter.format(fullPriceCents / 100)}
+                        </option>
+                        <option value="reduced">
+                          Tarif réduit —{' '}
+                          {currencyFormatter.format(reducedPriceCents / 100)}
+                        </option>
+                      </select>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <p
+              aria-live="polite"
+              className="border-t border-slate-700 pt-4 text-lg font-semibold text-white"
             >
-              {isSubmitting
-                ? 'Validation…'
-                : 'Confirmer et réserver temporairement'}
-            </button>
-          </div>
+              Total : {currencyFormatter.format(totalPriceCents / 100)}
+            </p>
+            <p className="text-sm text-slate-400">
+              Les sièges sont verrouillés 10 minutes dès leur sélection et
+              libérés lorsqu’ils sont retirés ou lorsque vous quittez ce
+              parcours.
+            </p>
+          </section>
         </>
       )}
 

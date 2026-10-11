@@ -16,6 +16,7 @@ export interface SeatMapItem {
 
 export interface SeatMap {
   showtimeId: string;
+  priceCents: number;
   seats: SeatMapItem[];
 }
 
@@ -35,6 +36,7 @@ interface SeatRecord {
 
 interface ShowtimeSeats {
   exists: boolean;
+  priceCents: number;
   seats: SeatRecord[];
 }
 
@@ -45,6 +47,12 @@ export interface SeatRepository {
     seatIds: string[],
     tokenHash: string,
     expiresAt: Date,
+    now: Date,
+  ): Promise<void>;
+  releaseTemporaryHold(
+    showtimeId: string,
+    seatIds: string[],
+    tokenHash: string,
     now: Date,
   ): Promise<void>;
 }
@@ -60,11 +68,11 @@ const prismaSeatRepository: SeatRepository = {
   findShowtimeSeats: async (showtimeId) => {
     const showtime = await prisma.showtime.findUnique({
       where: { id: showtimeId },
-      select: { id: true },
+      select: { id: true, price: true },
     });
 
     if (!showtime) {
-      return { exists: false, seats: [] };
+      return { exists: false, priceCents: 0, seats: [] };
     }
 
     const seats = await prisma.seat.findMany({
@@ -75,6 +83,7 @@ const prismaSeatRepository: SeatRepository = {
 
     return {
       exists: true,
+      priceCents: priceInCents(showtime.price),
       seats: seats.map(({ id, rowNumber, seatNumber, bookingId, hold }) => ({
         id,
         rowNumber,
@@ -115,10 +124,39 @@ const prismaSeatRepository: SeatRepository = {
       }
     });
   },
+  releaseTemporaryHold: async (showtimeId, seatIds, tokenHash, now) => {
+    await prisma.$transaction(async (transaction) => {
+      await transaction.seat.updateMany({
+        where: {
+          showtimeId,
+          id: { in: seatIds },
+          bookingId: null,
+          hold: {
+            is: {
+              tokenHash,
+              expiresAt: { gt: now },
+            },
+          },
+        },
+        data: { holdId: null },
+      });
+      await transaction.seatHold.deleteMany({
+        where: {
+          tokenHash,
+          expiresAt: { gt: now },
+          seats: { none: {} },
+        },
+      });
+    });
+  },
 };
 
 function hashSessionToken(sessionToken: string) {
   return createHash('sha256').update(sessionToken).digest('hex');
+}
+
+function priceInCents(price: number) {
+  return Math.round((price + Number.EPSILON) * 100);
 }
 
 export async function getSeatMap(
@@ -127,7 +165,8 @@ export async function getSeatMap(
   repository: SeatRepository = prismaSeatRepository,
   now: Date = new Date(),
 ): Promise<SeatMap | null> {
-  const { exists, seats } = await repository.findShowtimeSeats(showtimeId);
+  const { exists, seats, priceCents } =
+    await repository.findShowtimeSeats(showtimeId);
 
   if (!exists) {
     return null;
@@ -137,6 +176,7 @@ export async function getSeatMap(
 
   return {
     showtimeId,
+    priceCents,
     seats: seats.map((seat) => {
       const isHeld = seat.holdExpiresAt !== null && seat.holdExpiresAt > now;
       const status =
@@ -152,6 +192,29 @@ export async function getSeatMap(
       };
     }),
   };
+}
+
+export async function releaseTemporarySeatHold(
+  showtimeId: string,
+  seatIds: string[],
+  sessionToken: string,
+  repository: SeatRepository = prismaSeatRepository,
+  now: Date = new Date(),
+): Promise<boolean> {
+  const { exists } = await repository.findShowtimeSeats(showtimeId);
+
+  if (!exists) {
+    return false;
+  }
+
+  await repository.releaseTemporaryHold(
+    showtimeId,
+    seatIds,
+    hashSessionToken(sessionToken),
+    now,
+  );
+
+  return true;
 }
 
 export async function createTemporarySeatHold(

@@ -27,6 +27,9 @@ describe('API baseline', () => {
       response.body.paths['/api/showtimes/{showtimeId}/seats/holds'],
     ).toBeDefined();
     expect(
+      response.body.paths['/api/showtimes/{showtimeId}/seats/holds'].delete,
+    ).toBeDefined();
+    expect(
       response.body.paths['/api/showtimes/{showtimeId}/seats'].get.parameters,
     ).toContainEqual(
       expect.objectContaining({
@@ -102,6 +105,7 @@ describe('API baseline', () => {
     const seatService: SeatService = {
       getSeatMap: async () => ({
         showtimeId: 'showtime-1',
+        priceCents: 950,
         seats: [
           {
             id: 'seat-1',
@@ -114,6 +118,7 @@ describe('API baseline', () => {
         ],
       }),
       createTemporarySeatHold: async () => null,
+      releaseTemporarySeatHold: async () => true,
     };
 
     const response = await request(createApp(undefined, seatService))
@@ -143,6 +148,7 @@ describe('API baseline', () => {
         heldSeatIds: ['seat-1'],
         expiresAt: '2026-10-11T10:10:00.000Z',
       }),
+      releaseTemporarySeatHold: async () => true,
     };
 
     const response = await request(createApp(undefined, seatService))
@@ -173,6 +179,7 @@ describe('API baseline', () => {
       createTemporarySeatHold: async () => {
         throw new SeatUnavailableError(['seat-1']);
       },
+      releaseTemporarySeatHold: async () => true,
     };
 
     const response = await request(createApp(undefined, seatService))
@@ -182,5 +189,38 @@ describe('API baseline', () => {
 
     expect(response.status).toBe(409);
     expect(response.body.error).toBe('SEATS_UNAVAILABLE');
+  });
+
+  it('releases session-owned holds idempotently', async () => {
+    const releaseTemporarySeatHold = jest
+      .fn<SeatService['releaseTemporarySeatHold']>()
+      .mockResolvedValue(true);
+    const seatService: SeatService = {
+      getSeatMap: async () => null,
+      createTemporarySeatHold: async () => null,
+      releaseTemporarySeatHold,
+    };
+
+    const response = await request(createApp(undefined, seatService))
+      .delete('/api/showtimes/showtime-1/seats/holds')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b')
+      .send({ seatIds: ['seat-1'] });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ released: true });
+    expect(releaseTemporarySeatHold).toHaveBeenCalledWith(
+      'showtime-1',
+      ['seat-1'],
+      '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b',
+    );
+  });
+
+  it('rejects invalid release requests', async () => {
+    const response = await request(createApp())
+      .delete('/api/showtimes/showtime-1/seats/holds')
+      .send({ seatIds: ['seat-1'] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('INVALID_SEAT_RELEASE_REQUEST');
   });
 });

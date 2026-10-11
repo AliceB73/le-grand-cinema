@@ -8,6 +8,7 @@ import { getUpcomingProgramme } from './programme/programme.service.js';
 import {
   createTemporarySeatHold,
   getSeatMap,
+  releaseTemporarySeatHold,
   SeatUnavailableError,
   type SeatHoldResult,
   type SeatMap,
@@ -44,11 +45,17 @@ export interface SeatService {
     seatIds: string[],
     sessionToken: string,
   ): Promise<SeatHoldResult | null>;
+  releaseTemporarySeatHold(
+    showtimeId: string,
+    seatIds: string[],
+    sessionToken: string,
+  ): Promise<boolean>;
 }
 
 const defaultSeatService: SeatService = {
   getSeatMap,
   createTemporarySeatHold,
+  releaseTemporarySeatHold,
 };
 
 export function createApp(
@@ -158,6 +165,48 @@ export function createApp(
         response.status(500).json({
           error: 'SEAT_HOLD_UNAVAILABLE',
           message: 'La réservation temporaire est momentanément indisponible.',
+        });
+      }
+    },
+  );
+  app.delete(
+    '/api/showtimes/:showtimeId/seats/holds',
+    async (request, response) => {
+      const showtimeId = showtimeIdSchema.safeParse(request.params.showtimeId);
+      const sessionToken = seatSessionTokenSchema.safeParse(
+        request.get('x-seat-session-token'),
+      );
+      const body = holdRequestSchema.safeParse(request.body);
+
+      if (!showtimeId.success || !sessionToken.success || !body.success) {
+        response.status(400).json({
+          error: 'INVALID_SEAT_RELEASE_REQUEST',
+          message: 'La demande de libération des sièges est invalide.',
+        });
+        return;
+      }
+
+      try {
+        const released = await seatService.releaseTemporarySeatHold(
+          showtimeId.data,
+          body.data.seatIds,
+          sessionToken.data,
+        );
+
+        if (!released) {
+          response.status(404).json({
+            error: 'SHOWTIME_NOT_FOUND',
+            message: 'Cette séance n’existe pas.',
+          });
+          return;
+        }
+
+        response.json({ released: true });
+      } catch (error) {
+        console.error('Failed to release temporary seat holds.', error);
+        response.status(500).json({
+          error: 'SEAT_RELEASE_UNAVAILABLE',
+          message: 'La libération des sièges est momentanément indisponible.',
         });
       }
     },

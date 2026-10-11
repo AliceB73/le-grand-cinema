@@ -32,6 +32,7 @@ const seatMapItemSchema = z.object({
 });
 const seatMapSchema = z.object({
   showtimeId: z.string(),
+  priceCents: z.number().int().nonnegative(),
   seats: z.array(seatMapItemSchema),
 });
 const seatHoldRequestSchema = z.object({
@@ -89,7 +90,7 @@ registry.registerPath({
   },
   responses: {
     200: {
-      description: 'Plan de salle et états des sièges',
+      description: 'Plan de salle, tarif plein en centimes et états des sièges',
       content: { 'application/json': { schema: seatMapSchema } },
     },
     400: { description: 'Identifiant de séance ou session invalide' },
@@ -125,6 +126,38 @@ registry.registerPath({
     404: { description: 'Séance inconnue' },
     409: { description: 'Un ou plusieurs sièges sont indisponibles' },
     500: { description: 'Verrouillage temporaire indisponible' },
+  },
+});
+
+registry.registerPath({
+  method: 'delete',
+  path: '/api/showtimes/{showtimeId}/seats/holds',
+  summary: 'Libérer des sièges verrouillés par la session',
+  description:
+    'Libère les sièges demandés uniquement s’ils sont verrouillés par le jeton de la session anonyme. Une demande répétée est sans effet.',
+  request: {
+    params: z.object({ showtimeId: z.string() }),
+    headers: seatSessionHeaderSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: seatHoldRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description:
+        'Demande traitée ; seuls les verrous de cette session ont été libérés',
+      content: {
+        'application/json': { schema: z.object({ released: z.literal(true) }) },
+      },
+    },
+    400: { description: 'Demande de libération invalide' },
+    404: { description: 'Séance inconnue' },
+    500: { description: 'Libération des sièges momentanément indisponible' },
   },
 });
 

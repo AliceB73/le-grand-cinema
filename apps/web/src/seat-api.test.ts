@@ -3,6 +3,7 @@ import {
   getSeatMap,
   getSeatSessionToken,
   holdSeats,
+  releaseSeats,
   SeatApiError,
 } from './seat-api';
 
@@ -12,6 +13,7 @@ jest.mock('./api-config', () => ({
 
 const seatMapResponse = {
   showtimeId: 'showtime/1',
+  priceCents: 950,
   seats: [
     {
       id: 'seat-1',
@@ -105,6 +107,34 @@ describe('seat api', () => {
           'x-seat-session-token': 'session-token',
         },
         body: JSON.stringify({ seatIds: ['seat-1'] }),
+      },
+    );
+  });
+
+  it('releases selected seats with keepalive when the page is closing', async () => {
+    const fetcher = jest
+      .fn<TestFetcher>()
+      .mockResolvedValue(createResponse({ released: true }));
+
+    await expect(
+      releaseSeats(
+        'showtime-1',
+        ['seat-1', 'seat-2'],
+        'session-token',
+        true,
+        fetcher,
+      ),
+    ).resolves.toBeUndefined();
+    expect(fetcher).toHaveBeenCalledWith(
+      expect.stringMatching(/\/api\/showtimes\/showtime-1\/seats\/holds$/),
+      {
+        method: 'DELETE',
+        headers: {
+          'content-type': 'application/json',
+          'x-seat-session-token': 'session-token',
+        },
+        body: JSON.stringify({ seatIds: ['seat-1', 'seat-2'] }),
+        keepalive: true,
       },
     );
   });

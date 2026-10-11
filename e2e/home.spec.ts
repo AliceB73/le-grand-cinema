@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 
 test('home page displays upcoming cinema screenings', async ({ page }) => {
+  let held = false;
+
   await page.route('**/api/programme', async (route) => {
     await route.fulfill({
       status: 200,
@@ -18,6 +20,47 @@ test('home page displays upcoming cinema screenings', async ({ page }) => {
           startTime: '2026-10-05T12:00:00.000Z',
         },
       ]),
+    });
+  });
+  await page.route('**/api/showtimes/*/seats', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        showtimeId: 'demo-showtime-veilleurs-1',
+        priceCents: 950,
+        seats: [
+          {
+            id: 'seat-a1',
+            rowNumber: 'A',
+            seatNumber: 1,
+            status: held ? 'held' : 'available',
+            heldByCurrentSession: held,
+            expiresAt: held ? '2026-10-05T12:10:00.000Z' : null,
+          },
+        ],
+      }),
+    });
+  });
+  await page.route('**/api/showtimes/*/seats/holds', async (route) => {
+    if (route.request().method() === 'POST') {
+      held = true;
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          heldSeatIds: ['seat-a1'],
+          expiresAt: '2026-10-05T12:10:00.000Z',
+        }),
+      });
+      return;
+    }
+
+    held = false;
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ released: true }),
     });
   });
 
@@ -45,4 +88,18 @@ test('home page displays upcoming cinema screenings', async ({ page }) => {
   await expect(
     detailsPanel.getByRole('button', { name: 'Choisir mes places' }),
   ).toBeVisible();
+
+  await detailsPanel
+    .getByRole('button', { name: 'Choisir mes places' })
+    .click();
+  await page.getByRole('button', { name: 'Rangée A, siège 1, libre' }).click();
+  await expect(
+    page.getByRole('button', { name: 'Rangée A, siège 1, sélectionné' }),
+  ).toBeVisible();
+  await page
+    .getByLabel('Rangée A, siège 1', { exact: true })
+    .selectOption('reduced');
+  await expect(page.getByText(/Total : 4,75/)).toBeVisible();
+  await page.getByRole('button', { name: 'Retour à la programmation' }).click();
+  await expect.poll(() => held).toBe(false);
 });
