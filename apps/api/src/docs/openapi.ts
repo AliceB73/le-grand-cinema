@@ -19,6 +19,28 @@ const programmeItemSchema = z.object({
   occupancyStatus: z.enum(['AVAILABLE', 'LAST_SEATS', 'FULL']),
   startTime: z.string().datetime(),
 });
+const seatSessionHeaderSchema = z.object({
+  'x-seat-session-token': z.string().uuid(),
+});
+const seatMapItemSchema = z.object({
+  id: z.string(),
+  rowNumber: z.string(),
+  seatNumber: z.number().int().positive(),
+  status: z.enum(['available', 'occupied', 'held']),
+  heldByCurrentSession: z.boolean(),
+  expiresAt: z.string().datetime().nullable(),
+});
+const seatMapSchema = z.object({
+  showtimeId: z.string(),
+  seats: z.array(seatMapItemSchema),
+});
+const seatHoldRequestSchema = z.object({
+  seatIds: z.array(z.string()).min(1).max(300),
+});
+const seatHoldResponseSchema = z.object({
+  heldSeatIds: z.array(z.string()),
+  expiresAt: z.string().datetime(),
+});
 
 registry.registerPath({
   method: 'get',
@@ -54,6 +76,55 @@ registry.registerPath({
     500: {
       description: 'La programmation est momentanément indisponible',
     },
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/api/showtimes/{showtimeId}/seats',
+  summary: 'Consulter le plan et la disponibilité des sièges',
+  request: {
+    params: z.object({ showtimeId: z.string() }),
+    headers: seatSessionHeaderSchema,
+  },
+  responses: {
+    200: {
+      description: 'Plan de salle et états des sièges',
+      content: { 'application/json': { schema: seatMapSchema } },
+    },
+    400: { description: 'Identifiant de séance ou session invalide' },
+    404: { description: 'Séance inconnue' },
+    500: { description: 'Plan de salle momentanément indisponible' },
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/api/showtimes/{showtimeId}/seats/holds',
+  summary: 'Verrouiller temporairement des sièges',
+  description:
+    'Verrouille atomiquement les sièges disponibles pour la session anonyme pendant 10 minutes.',
+  request: {
+    params: z.object({ showtimeId: z.string() }),
+    headers: seatSessionHeaderSchema,
+    body: {
+      content: {
+        'application/json': {
+          schema: seatHoldRequestSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      description: 'Sièges verrouillés temporairement',
+      content: { 'application/json': { schema: seatHoldResponseSchema } },
+    },
+    400: { description: 'Demande de verrouillage invalide' },
+    404: { description: 'Séance inconnue' },
+    409: { description: 'Un ou plusieurs sièges sont indisponibles' },
+    500: { description: 'Verrouillage temporaire indisponible' },
   },
 });
 

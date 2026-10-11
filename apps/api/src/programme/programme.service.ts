@@ -93,7 +93,9 @@ export async function getUpcomingProgramme(
       posterUrl: movie.posterUrl,
       roomName: room.name,
       occupancyStatus: getOccupancyStatus(confirmedSeats, room.capacity),
-      startTime: DateTime.fromJSDate(startTime, { zone: PROGRAMME_TIME_ZONE })
+      startTime: DateTime.fromJSDate(startTime, {
+        zone: PROGRAMME_TIME_ZONE,
+      })
         .toUTC()
         .toISO()!,
     };

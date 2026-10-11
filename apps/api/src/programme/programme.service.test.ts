@@ -1,4 +1,4 @@
-import { Genre, RoomCategory } from '@prisma/client';
+import { BookingStatus, Genre, RoomCategory } from '@prisma/client';
 import { describe, expect, it, jest } from '@jest/globals';
 import { prisma } from '../data/prisma.js';
 import {
@@ -125,7 +125,7 @@ describe('getUpcomingProgramme', () => {
           movie: true,
           room: true,
           bookings: {
-            where: { status: 'CONFIRMED' },
+            where: { status: BookingStatus.CONFIRMED },
             select: { _count: { select: { seats: true } } },
           },
         },

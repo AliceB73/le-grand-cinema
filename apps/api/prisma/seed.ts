@@ -1,20 +1,34 @@
-import { Genre, PrismaClient } from '@prisma/client';
+import { Genre, PrismaClient, RoomCategory } from '@prisma/client';
 import { generateDemoShowtimes } from '../src/programme/demo-schedule.js';
 
 const prisma = new PrismaClient();
 
-const rooms = [
-  { name: 'Salle A', category: 'PREMIUM_IMAX', capacity: 300 },
-  { name: 'Salle B', category: 'PREMIUM_IMAX', capacity: 300 },
-  { name: 'Salle C', category: 'STANDARD', capacity: 180 },
-  { name: 'Salle D', category: 'STANDARD', capacity: 180 },
-  { name: 'Salle E', category: 'STANDARD', capacity: 180 },
-  { name: 'Salle F', category: 'STANDARD', capacity: 180 },
-  { name: 'Salle G', category: 'VIP', capacity: 120 },
-  { name: 'Salle H', category: 'VIP', capacity: 120 },
-  { name: 'Salle I', category: 'EVENT', capacity: 70 },
-  { name: 'Salle J', category: 'EVENT', capacity: 70 },
-] as const;
+const roomTypes = [
+  ...['Salle A', 'Salle B'].map((name) => ({
+    name,
+    category: RoomCategory.PREMIUM_IMAX,
+    capacity: 300,
+    seatsPerRow: 20,
+  })),
+  ...['Salle C', 'Salle D', 'Salle E', 'Salle F'].map((name) => ({
+    name,
+    category: RoomCategory.STANDARD,
+    capacity: 180,
+    seatsPerRow: 15,
+  })),
+  ...['Salle G', 'Salle H'].map((name) => ({
+    name,
+    category: RoomCategory.VIP,
+    capacity: 120,
+    seatsPerRow: 12,
+  })),
+  ...['Salle I', 'Salle J'].map((name) => ({
+    name,
+    category: RoomCategory.EVENT,
+    capacity: 70,
+    seatsPerRow: 10,
+  })),
+];
 
 const movies = [
   {
@@ -58,11 +72,18 @@ const movies = [
 async function seed() {
   let totalShowtimes = 0;
 
-  for (const room of rooms) {
+  for (const room of roomTypes) {
     await prisma.room.upsert({
       where: { name: room.name },
-      create: room,
-      update: room,
+      create: {
+        name: room.name,
+        category: room.category,
+        capacity: room.capacity,
+      },
+      update: {
+        category: room.category,
+        capacity: room.capacity,
+      },
     });
   }
 
@@ -90,6 +111,11 @@ async function seed() {
       movie.scheduleKey,
       movie.firstWeekIds,
     );
+    const layout = roomTypes.find(({ name }) => name === movie.roomName);
+    if (!layout) {
+      throw new Error(`Unknown demo room: ${movie.roomName}`);
+    }
+
     for (const screening of showtimes) {
       await prisma.showtime.upsert({
         where: { id: screening.id },
@@ -106,6 +132,19 @@ async function seed() {
           startTime: screening.startTime,
           price: 9.5,
         },
+      });
+
+      const seats = Array.from({ length: layout.capacity }, (_, index) => ({
+        showtimeId: screening.id,
+        rowNumber: String.fromCharCode(
+          'A'.charCodeAt(0) + Math.floor(index / layout.seatsPerRow),
+        ),
+        seatNumber: (index % layout.seatsPerRow) + 1,
+      }));
+
+      await prisma.seat.createMany({
+        data: seats,
+        skipDuplicates: true,
       });
     }
 
