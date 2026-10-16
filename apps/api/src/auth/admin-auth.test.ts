@@ -73,4 +73,91 @@ describe('admin authenticator', () => {
       authenticator.authorize('Bearer access-token'),
     ).rejects.toMatchObject({ reason: 'unavailable' });
   });
+
+  it('rejects malformed authorization and missing Supabase configuration', async () => {
+    const missingConfiguration = createAdminAuthenticator({
+      supabaseUrl: '',
+      supabaseAnonKey: '',
+      fetcher: jest.fn<typeof fetch>(),
+    });
+
+    await expect(
+      missingConfiguration.authorize('not-a-bearer-token'),
+    ).rejects.toMatchObject({ reason: 'missing' });
+    await expect(
+      missingConfiguration.authorize('Bearer token'),
+    ).rejects.toMatchObject({ reason: 'unavailable' });
+  });
+
+  it('distinguishes invalid credentials from an unavailable Supabase response', async () => {
+    for (const status of [401, 403]) {
+      const authenticator = createAdminAuthenticator({
+        supabaseUrl: 'https://example.supabase.co',
+        supabaseAnonKey: 'anon-key',
+        fetcher: jest
+          .fn<typeof fetch>()
+          .mockResolvedValue(new Response(null, { status })),
+      });
+
+      await expect(
+        authenticator.authorize('Bearer token'),
+      ).rejects.toMatchObject({ reason: 'invalid' });
+    }
+
+    const unavailable = createAdminAuthenticator({
+      supabaseUrl: 'https://example.supabase.co',
+      supabaseAnonKey: 'anon-key',
+      fetcher: jest
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status: 503 })),
+    });
+    await expect(unavailable.authorize('Bearer token')).rejects.toMatchObject({
+      reason: 'unavailable',
+    });
+  });
+
+  it('rejects malformed Supabase profiles and reports role lookup failures', async () => {
+    const malformedProfiles = [
+      'not-json',
+      JSON.stringify(null),
+      JSON.stringify({ email: '' }),
+      JSON.stringify({ email: 123 }),
+    ];
+    for (const body of malformedProfiles) {
+      const authenticator = createAdminAuthenticator({
+        supabaseUrl: 'https://example.supabase.co',
+        supabaseAnonKey: 'anon-key',
+        fetcher: jest.fn<typeof fetch>().mockResolvedValue(
+          new Response(body, {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          }),
+        ),
+        findRoleByEmail: jest
+          .fn<(email: string) => Promise<Role | null>>()
+          .mockResolvedValue(null),
+      });
+      await expect(
+        authenticator.authorize('Bearer token'),
+      ).rejects.toMatchObject({
+        reason: body === 'not-json' ? 'unavailable' : 'invalid',
+      });
+    }
+
+    const roleLookupFailure = createAdminAuthenticator({
+      supabaseUrl: 'https://example.supabase.co',
+      supabaseAnonKey: 'anon-key',
+      fetcher: jest.fn<typeof fetch>().mockResolvedValue(
+        new Response(JSON.stringify({ email: 'staff@example.com' }), {
+          status: 200,
+        }),
+      ),
+      findRoleByEmail: jest
+        .fn<(email: string) => Promise<Role | null>>()
+        .mockRejectedValue(new Error('database down')),
+    });
+    await expect(
+      roleLookupFailure.authorize('Bearer token'),
+    ).rejects.toMatchObject({ reason: 'unavailable' });
+  });
 });
