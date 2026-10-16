@@ -10,6 +10,11 @@ import {
   StripeConfigurationError,
 } from './payments/stripe-gateway.js';
 import { InvalidCheckoutError } from './payments/payment.service.js';
+import {
+  AdminAuthenticationError,
+  type AdminAuthenticator,
+} from './auth/admin-auth.js';
+import type { TicketService } from './tickets/ticket.service.js';
 
 describe('API baseline', () => {
   it('returns a healthy status', async () => {
@@ -19,12 +24,95 @@ describe('API baseline', () => {
     expect(response.body).toEqual({ status: 'ok' });
   });
 
+  it('requires staff auth and rejects a previously consumed ticket', async () => {
+    const authorize = jest.fn<AdminAuthenticator['authorize']>();
+    const checkIn = jest
+      .fn<TicketService['checkIn']>()
+      .mockResolvedValueOnce('accepted')
+      .mockResolvedValueOnce('already_used');
+    const app = createApp(
+      undefined,
+      undefined,
+      undefined,
+      { checkIn },
+      {
+        authorize,
+      },
+    );
+    const requestBody = {
+      qrCode: `lgc1_${'a'.repeat(43)}`,
+    };
+
+    const accepted = await request(app)
+      .post('/api/tickets/check-in')
+      .set('Authorization', 'Bearer staff-token')
+      .send(requestBody);
+    const repeated = await request(app)
+      .post('/api/tickets/check-in')
+      .set('Authorization', 'Bearer staff-token')
+      .send(requestBody);
+
+    expect(accepted.status).toBe(200);
+    expect(accepted.body).toEqual({ status: 'accepted' });
+    expect(repeated.status).toBe(409);
+    expect(repeated.body.error).toBe('TICKET_ALREADY_USED');
+    expect(authorize).toHaveBeenCalledTimes(2);
+    expect(checkIn).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not process a check-in when staff authorization fails', async () => {
+    const authorize = jest
+      .fn<AdminAuthenticator['authorize']>()
+      .mockRejectedValue(new AdminAuthenticationError('forbidden'));
+    const checkIn = jest.fn<TicketService['checkIn']>();
+    const app = createApp(
+      undefined,
+      undefined,
+      undefined,
+      { checkIn },
+      {
+        authorize,
+      },
+    );
+    const response = await request(app)
+      .post('/api/tickets/check-in')
+      .set('Authorization', 'Bearer user-token')
+      .send({ qrCode: `lgc1_${'a'.repeat(43)}` });
+
+    expect(response.status).toBe(403);
+    expect(checkIn).not.toHaveBeenCalled();
+  });
+
+  it('requires staff authentication before validating the QR shape', async () => {
+    const authorize = jest
+      .fn<AdminAuthenticator['authorize']>()
+      .mockRejectedValue(new AdminAuthenticationError('missing'));
+    const checkIn = jest.fn<TicketService['checkIn']>();
+    const app = createApp(
+      undefined,
+      undefined,
+      undefined,
+      { checkIn },
+      {
+        authorize,
+      },
+    );
+
+    const response = await request(app)
+      .post('/api/tickets/check-in')
+      .send({ qrCode: 'not-a-ticket' });
+
+    expect(response.status).toBe(401);
+    expect(checkIn).not.toHaveBeenCalled();
+  });
+
   it('publishes the OpenAPI document', async () => {
     const response = await request(createApp()).get('/api/openapi.json');
 
     expect(response.status).toBe(200);
     expect(response.body.openapi).toBe('3.0.0');
     expect(response.body.paths['/api/health']).toBeDefined();
+    expect(response.body.paths['/api/tickets/check-in'].post).toBeDefined();
     expect(response.body.paths['/api/programme']).toBeDefined();
     expect(
       response.body.paths['/api/showtimes/{showtimeId}/seats'],

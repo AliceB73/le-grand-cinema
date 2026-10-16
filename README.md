@@ -38,14 +38,14 @@ Copiez la clé `anon` affichée par `supabase status` dans `.env` à la place de
 
 ### Stripe Checkout en mode test
 
-Configurez `STRIPE_SECRET_KEY` avec une clé secrète de test Stripe (`sk_test_…`) et `WEB_BASE_URL=http://localhost:5173` dans `.env`. Sans clé de test, le site reste consultable mais le paiement renvoie une erreur explicite de configuration. Pour recevoir les notifications localement, démarrez Stripe CLI et transférez les événements :
+Configurez `STRIPE_SECRET_KEY` avec une clé secrète de test Stripe (`sk_test_…`) et `WEB_BASE_URL=http://localhost:5173` dans `.env`. Sans clé de test, le site reste consultable mais le paiement renvoie une erreur explicite de configuration. Pour recevoir les notifications localement, démarrez Stripe CLI dans un premier terminal PowerShell et laissez-le ouvert :
 
 ```powershell
 stripe login
-stripe listen --forward-to localhost:3000/api/payments/webhook
+stripe listen --events checkout.session.completed,checkout.session.expired,checkout.session.async_payment_succeeded --forward-to localhost:3000/api/payments/webhook
 ```
 
-Copiez le secret `whsec_…` affiché par Stripe CLI dans `STRIPE_WEBHOOK_SECRET` de `.env`, puis redémarrez l’API. Les clés Stripe réelles ne doivent jamais être ajoutées à `.env.example` ni commitées. Pour simuler un paiement, utilisez les moyens de paiement de test documentés par Stripe, par exemple la carte `4242 4242 4242 4242`, avec une date future et un CVC de test.
+Copiez le secret `whsec_…` affiché par cette commande dans `STRIPE_WEBHOOK_SECRET` de `.env`, puis redémarrez l’API. Pour vérifier le transfert, effectuez un vrai checkout démarré depuis l’application dans un second terminal/navigateur : le terminal Stripe CLI doit afficher `checkout.session.completed` puis une réponse HTTP `200` vers `/api/payments/webhook`. Le message `Trigger succeeded!` de `stripe trigger checkout.session.completed` confirme seulement la création d’un événement synthétique dans Stripe ; il n’est pas lié à la réservation de l’application et ne valide pas le parcours de paiement complet. Les clés Stripe réelles ne doivent jamais être ajoutées à `.env.example` ni commitées. Pour simuler un paiement, utilisez les moyens de paiement de test documentés par Stripe, par exemple la carte `4242 4242 4242 4242`, avec une date future et un CVC de test.
 
 Une réservation invitée est confirmée uniquement par le webhook Stripe signé. Les verrous de sièges restent limités à 10 minutes même lorsque Checkout est ouvert ; un paiement accepté après leur expiration n’attribue pas les sièges et doit être traité comme remboursement.
 
