@@ -10,9 +10,13 @@ import {
 } from '@testing-library/react';
 import App from './App';
 import { getProgramme } from './programme-api';
+import { getCheckoutStatus } from './payment-api';
 
 jest.mock('./programme-api', () => ({
   getProgramme: jest.fn(),
+}));
+jest.mock('./payment-api', () => ({
+  getCheckoutStatus: jest.fn(),
 }));
 jest.mock('./SeatMap', () => ({
   __esModule: true,
@@ -31,6 +35,8 @@ describe('App', () => {
     cleanup();
     jest.useRealTimers();
     jest.mocked(getProgramme).mockReset();
+    jest.mocked(getCheckoutStatus).mockReset();
+    window.history.replaceState({}, '', '/');
   });
 
   it('shows future screening cards with film and session details', async () => {
@@ -58,6 +64,47 @@ describe('App', () => {
     expect(screen.getByText('Salle A')).toBeTruthy();
     expect(
       screen.getByAltText('Affiche du film Les Veilleurs du Phare'),
+    ).toBeTruthy();
+  });
+
+  it('shows the confirmed booking status after returning from Checkout', async () => {
+    jest.mocked(getProgramme).mockResolvedValue([]);
+    jest.mocked(getCheckoutStatus).mockResolvedValue({
+      status: 'confirmed',
+    });
+    window.history.replaceState(
+      {},
+      '',
+      '/?payment=success&session_id=cs_test_checkout-1',
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByText(
+        'Paiement confirmé. Votre réservation est validée et vos sièges sont attribués.',
+      ),
+    ).toBeTruthy();
+    expect(getCheckoutStatus).toHaveBeenCalledWith('cs_test_checkout-1');
+  });
+
+  it('warns when a successful late payment needs a refund', async () => {
+    jest.mocked(getProgramme).mockResolvedValue([]);
+    jest.mocked(getCheckoutStatus).mockResolvedValue({
+      status: 'refund_required',
+    });
+    window.history.replaceState(
+      {},
+      '',
+      '/?payment=success&session_id=cs_test_checkout-1',
+    );
+
+    render(<App />);
+
+    expect(
+      await screen.findByText(
+        'Le paiement a été reçu après expiration des sièges. La réservation n’est pas confirmée et le remboursement doit être traité.',
+      ),
     ).toBeTruthy();
   });
 

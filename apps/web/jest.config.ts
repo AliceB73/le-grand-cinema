@@ -23,6 +23,9 @@ const config: Config = {
       },
     ],
   },
+  moduleNameMapper: {
+    '^\\./api-config$': '<rootDir>/src/api-config.mock.ts',
+  },
 };
 
 export default config;

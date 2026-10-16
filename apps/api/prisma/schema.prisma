@@ -17,6 +17,7 @@ enum BookingStatus {
   PENDING
   CONFIRMED
   CANCELLED
+  REFUND_REQUIRED
 }
 
 enum Genre {
@@ -61,7 +62,7 @@ model Movie {
   title       String
   genre       Genre
   description String
-  duration    Int        // Durée en minutes
+  duration    Int // Durée en minutes
   posterUrl   String?
   showtimes   Showtime[]
   createdAt   DateTime   @default(now())
@@ -83,21 +84,26 @@ model Showtime {
 }
 
 model Booking {
-  id         String        @id @default(uuid())
-  userId     String
-  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  showtimeId String
-  showtime   Showtime      @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
-  status     BookingStatus @default(CONFIRMED)
-  seats      Seat[]
-  createdAt  DateTime      @default(now())
-  updatedAt  DateTime      @updatedAt
+  id                      String        @id @default(uuid())
+  userId                  String?
+  user                    User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  guestEmail              String?
+  showtimeId              String
+  showtime                Showtime      @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
+  status                  BookingStatus @default(CONFIRMED)
+  stripeCheckoutSessionId String?       @unique
+  seatHoldTokenHash       String?
+  seatIds                 String[]      @default([])
+  totalAmountCents        Int?
+  seats                   Seat[]
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
 }
 
 model Seat {
   id         String    @id @default(uuid())
-  rowNumber  String    // Rangée (ex: "A")
-  seatNumber Int       // Numéro de siège (ex: 12)
+  rowNumber  String // Rangée (ex: "A")
+  seatNumber Int // Numéro de siège (ex: 12)
   showtimeId String
   showtime   Showtime  @relation(fields: [showtimeId], references: [id], onDelete: Cascade)
   bookingId  String?
