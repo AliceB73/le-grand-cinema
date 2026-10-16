@@ -42,6 +42,86 @@ const seatHoldResponseSchema = z.object({
   heldSeatIds: z.array(z.string()),
   expiresAt: z.string().datetime(),
 });
+const checkoutRequestSchema = z.object({
+  tickets: z
+    .array(
+      z.object({
+        seatId: z.string(),
+        fare: z.enum(['full', 'reduced']),
+      }),
+    )
+    .min(1)
+    .max(300),
+});
+const checkoutResponseSchema = z.object({
+  id: z.string(),
+  url: z.url(),
+});
+const checkoutStatusSchema = z.object({
+  status: z.enum(['pending', 'confirmed', 'cancelled', 'refund_required']),
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/api/showtimes/{showtimeId}/checkout',
+  summary: 'Créer une session Stripe Checkout',
+  description:
+    'Vérifie les sièges verrouillés par la session anonyme et calcule les tarifs côté serveur avant de rediriger vers Stripe Checkout en mode carte.',
+  request: {
+    params: z.object({ showtimeId: z.string() }),
+    headers: seatSessionHeaderSchema,
+    body: {
+      content: { 'application/json': { schema: checkoutRequestSchema } },
+      required: true,
+    },
+  },
+  responses: {
+    201: {
+      description: 'URL hébergée de Stripe Checkout',
+      content: { 'application/json': { schema: checkoutResponseSchema } },
+    },
+    400: { description: 'Demande de paiement invalide' },
+    404: { description: 'Séance inconnue' },
+    409: { description: 'Un ou plusieurs sièges ne sont plus verrouillés' },
+    500: { description: 'Création du paiement momentanément indisponible' },
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/api/payments/sessions/{sessionId}/status',
+  summary: 'Consulter le statut de Checkout',
+  request: {
+    params: z.object({ sessionId: z.string() }),
+  },
+  responses: {
+    200: {
+      description: 'Statut de la réservation liée à la session Stripe',
+      content: { 'application/json': { schema: checkoutStatusSchema } },
+    },
+    404: { description: 'Session Stripe inconnue' },
+  },
+});
+
+registry.registerPath({
+  method: 'post',
+  path: '/api/payments/webhook',
+  summary: 'Recevoir les notifications Stripe',
+  description:
+    'Vérifie la signature Stripe sur le corps brut. Seul cet endpoint peut confirmer une réservation et attribuer ses sièges.',
+  request: {
+    headers: z.object({ 'stripe-signature': z.string() }),
+    body: {
+      content: { 'application/json': { schema: z.unknown() } },
+      required: true,
+    },
+  },
+  responses: {
+    200: { description: 'Notification Stripe traitée' },
+    400: { description: 'Signature ou notification invalide' },
+    500: { description: 'Traitement de la notification à réessayer' },
+  },
+});
 
 registry.registerPath({
   method: 'get',

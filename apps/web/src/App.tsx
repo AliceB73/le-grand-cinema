@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import SeatMap from './SeatMap';
 import { getProgramme, type ProgrammeItem } from './programme-api';
+import { getCheckoutStatus } from './payment-api';
 
 const dateTimeFormatter = new Intl.DateTimeFormat('fr-FR', {
   timeZone: 'Europe/Paris',
@@ -66,6 +67,7 @@ export default function App() {
   const [titleSearch, setTitleSearch] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedGenre, setSelectedGenre] = useState('');
+  const [paymentNotice, setPaymentNotice] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const openerRef = useRef<HTMLButtonElement | null>(null);
@@ -115,6 +117,83 @@ export default function App() {
       controller.abort();
     };
   }, [reloadKey]);
+
+  useEffect(() => {
+    const parameters = new URLSearchParams(window.location.search);
+    if (parameters.get('payment') === 'cancelled') {
+      setPaymentNotice(
+        'Paiement annulé. Les sièges sélectionnés resteront bloqués au plus 10 minutes.',
+      );
+      return;
+    }
+    if (parameters.get('payment') !== 'success') {
+      return;
+    }
+
+    const sessionId = parameters.get('session_id');
+    if (!sessionId) {
+      setPaymentNotice(
+        'Le retour de paiement est incomplet. Vérifiez votre e-mail ou contactez le cinéma.',
+      );
+      return;
+    }
+    const checkoutSessionId = sessionId;
+
+    let isActive = true;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let attempt = 0;
+
+    async function checkPaymentStatus() {
+      try {
+        const { status } = await getCheckoutStatus(checkoutSessionId);
+        if (!isActive) {
+          return;
+        }
+        if (status === 'confirmed') {
+          setPaymentNotice(
+            'Paiement confirmé. Votre réservation est validée et vos sièges sont attribués.',
+          );
+          return;
+        }
+        if (status === 'refund_required') {
+          setPaymentNotice(
+            'Le paiement a été reçu après expiration des sièges. La réservation n’est pas confirmée et le remboursement doit être traité.',
+          );
+          return;
+        }
+        if (status === 'cancelled') {
+          setPaymentNotice(
+            'Le paiement n’a pas été finalisé. Les sièges seront libérés à l’expiration de leur verrou.',
+          );
+          return;
+        }
+
+        attempt += 1;
+        if (attempt < 15) {
+          timeoutId = setTimeout(() => void checkPaymentStatus(), 2000);
+          setPaymentNotice('Confirmation du paiement en cours…');
+        } else {
+          setPaymentNotice(
+            'La confirmation prend plus de temps que prévu. Vérifiez votre e-mail avant de réessayer.',
+          );
+        }
+      } catch {
+        if (isActive) {
+          setPaymentNotice(
+            'Le statut du paiement est momentanément indisponible. Vérifiez votre e-mail avant de réessayer.',
+          );
+        }
+      }
+    }
+
+    void checkPaymentStatus();
+    return () => {
+      isActive = false;
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!selectedScreeningId) {
@@ -232,6 +311,15 @@ export default function App() {
             prochaine sortie cinéma.
           </p>
         </header>
+
+        {paymentNotice && (
+          <p
+            className="rounded-xl border border-amber-300/40 bg-amber-950/40 p-5 text-amber-100"
+            role="status"
+          >
+            {paymentNotice}
+          </p>
+        )}
 
         {programme === null && !hasError && (
           <p className="py-10 text-center text-slate-300" role="status">

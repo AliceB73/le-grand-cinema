@@ -9,6 +9,8 @@ import {
   type SeatMap as SeatMapData,
   type SeatMapItem,
 } from './seat-api';
+import { createCheckout, PaymentApiError } from './payment-api';
+import { redirectToCheckout } from './navigation';
 
 const screeningTimeFormatter = new Intl.DateTimeFormat('fr-FR', {
   timeZone: 'Europe/Paris',
@@ -60,6 +62,7 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState('');
+  const [isCheckoutPending, setIsCheckoutPending] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const selectedSeatIdsRef = useRef<string[]>([]);
   const pendingSeatIdsRef = useRef<string[]>([]);
@@ -366,6 +369,41 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
     onClose();
   }
 
+  async function startCheckout() {
+    const token = sessionTokenRef.current;
+    if (!token || selectedSeatIds.length === 0 || isCheckoutPending) {
+      return;
+    }
+
+    setActionError(null);
+    setIsCheckoutPending(true);
+    try {
+      const checkout = await createCheckout(
+        screening.id,
+        token,
+        selectedSeatIds.map((seatId) => ({
+          seatId,
+          fare: ticketFares[seatId] ?? 'full',
+        })),
+      );
+      redirectToCheckout(checkout.url);
+    } catch (error) {
+      setIsCheckoutPending(false);
+      if (error instanceof PaymentApiError && error.status === 409) {
+        setActionError(
+          'Un ou plusieurs sièges ne sont plus disponibles. Actualisez le plan puis réessayez.',
+        );
+        await refreshSeatMap();
+        return;
+      }
+      setActionError(
+        error instanceof PaymentApiError
+          ? error.message
+          : 'Le paiement est momentanément indisponible. Réessayez.',
+      );
+    }
+  }
+
   const fullPriceCents = seatMap?.priceCents ?? 0;
   const reducedPriceCents = Math.round(fullPriceCents / 2);
   const totalPriceCents = selectedSeatIds.reduce(
@@ -384,7 +422,7 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
       <div>
         <button
           className="mb-5 rounded-lg border border-slate-600 px-4 py-2 font-semibold text-slate-200 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
-          disabled={isClosing || pendingSeatIds.length > 0}
+          disabled={isClosing || isCheckoutPending || pendingSeatIds.length > 0}
           onClick={() => void closeSelection()}
           type="button"
         >
@@ -513,6 +551,7 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
                           className={`flex h-11 min-w-11 items-center justify-center gap-1 rounded-t-xl border text-xs font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${statusClass}`}
                           disabled={
                             isPending ||
+                            isCheckoutPending ||
                             (!isSelected &&
                               seat.status !== 'available' &&
                               !seat.heldByCurrentSession) ||
@@ -581,6 +620,7 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
                       </label>
                       <select
                         className="rounded-lg border border-slate-600 bg-slate-950 px-3 py-2 text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+                        disabled={isCheckoutPending}
                         id={`ticket-fare-${seatId}`}
                         onChange={(event) =>
                           setTicketFares((current) => ({
@@ -614,10 +654,25 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
             >
               Total : {currencyFormatter.format(totalPriceCents / 100)}
             </p>
+            <button
+              className="w-full rounded-lg bg-amber-300 px-4 py-3 font-semibold text-slate-950 hover:bg-amber-200 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-200 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={
+                selectedSeatIds.length === 0 ||
+                isCheckoutPending ||
+                pendingSeatIds.length > 0 ||
+                loadError !== null
+              }
+              onClick={() => void startCheckout()}
+              type="button"
+            >
+              {isCheckoutPending
+                ? 'Préparation du paiement…'
+                : 'Payer par carte'}
+            </button>
             <p className="text-sm text-slate-400">
               Les sièges sont verrouillés 10 minutes dès leur sélection et
-              libérés lorsqu’ils sont retirés ou lorsque vous quittez ce
-              parcours.
+              libérés lorsqu’ils sont retirés ou lorsque leur verrou expire. Le
+              paiement sécurisé est effectué sur Stripe.
             </p>
           </section>
         </>

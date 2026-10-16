@@ -8,6 +8,8 @@ import {
 } from '@testing-library/react';
 import SeatMap from './SeatMap';
 import type { ProgrammeItem } from './programme-api';
+import { createCheckout, PaymentApiError } from './payment-api';
+import { redirectToCheckout } from './navigation';
 import {
   getSeatMap,
   getSeatSessionToken,
@@ -15,6 +17,22 @@ import {
   releaseSeats,
   SeatApiError,
 } from './seat-api';
+
+jest.mock('./payment-api', () => ({
+  createCheckout: jest.fn(),
+  PaymentApiError: class MockPaymentApiError extends Error {
+    constructor(
+      readonly status: number,
+      readonly code: string,
+      message: string,
+    ) {
+      super(message);
+    }
+  },
+}));
+jest.mock('./navigation', () => ({
+  redirectToCheckout: jest.fn(),
+}));
 
 jest.mock('./seat-api', () => {
   class MockSeatApiError extends Error {
@@ -94,7 +112,6 @@ const initialSeatMap = {
     },
   ],
 };
-
 async function clickAndWait(element: HTMLElement) {
   await act(async () => {
     fireEvent.click(element);
@@ -111,6 +128,8 @@ describe('SeatMap', () => {
     jest.mocked(getSeatSessionToken).mockClear();
     jest.mocked(holdSeats).mockReset();
     jest.mocked(releaseSeats).mockReset();
+    jest.mocked(createCheckout).mockReset();
+    jest.mocked(redirectToCheckout).mockReset();
   });
 
   it('locks seats immediately, allows a fare per seat, and recalculates the total', async () => {
@@ -173,6 +192,81 @@ describe('SeatMap', () => {
         name: 'Confirmer et réserver temporairement',
       }),
     ).toBeNull();
+  });
+
+  it('creates a Checkout session from selected seats and redirects to Stripe', async () => {
+    jest.mocked(getSeatMap).mockResolvedValue(initialSeatMap);
+    jest.mocked(holdSeats).mockImplementation(async (_showtime, seatIds) => ({
+      heldSeatIds: seatIds,
+      expiresAt: '2026-10-11T19:10:00.000Z',
+    }));
+    jest.mocked(releaseSeats).mockResolvedValue();
+    jest.mocked(createCheckout).mockResolvedValue({
+      id: 'cs_test_checkout-1',
+      url: 'https://checkout.stripe.com/test',
+    });
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+    await clickAndWait(
+      await screen.findByRole('button', {
+        name: 'Rangée A, siège 1, libre',
+      }),
+    );
+    fireEvent.change(screen.getByLabelText('Rangée A, siège 1'), {
+      target: { value: 'reduced' },
+    });
+    await clickAndWait(screen.getByRole('button', { name: 'Payer par carte' }));
+
+    expect(createCheckout).toHaveBeenCalledWith(
+      'showtime-1',
+      '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b',
+      [{ seatId: 'seat-free', fare: 'reduced' }],
+    );
+    expect(redirectToCheckout).toHaveBeenCalledWith(
+      'https://checkout.stripe.com/test',
+    );
+  });
+
+  it('refreshes expired seats and displays payment failures', async () => {
+    jest.mocked(getSeatMap).mockResolvedValue(initialSeatMap);
+    jest.mocked(holdSeats).mockImplementation(async (_showtime, seatIds) => ({
+      heldSeatIds: seatIds,
+      expiresAt: '2026-10-11T19:10:00.000Z',
+    }));
+    jest.mocked(releaseSeats).mockResolvedValue();
+    jest
+      .mocked(createCheckout)
+      .mockRejectedValueOnce(
+        new PaymentApiError(
+          409,
+          'SEATS_UNAVAILABLE',
+          'Un ou plusieurs sièges ne sont plus disponibles.',
+        ),
+      )
+      .mockRejectedValueOnce(new Error('network unavailable'));
+
+    render(<SeatMap onClose={jest.fn()} screening={screening} />);
+    await clickAndWait(
+      await screen.findByRole('button', {
+        name: 'Rangée A, siège 1, libre',
+      }),
+    );
+    await clickAndWait(screen.getByRole('button', { name: 'Payer par carte' }));
+    expect(
+      await screen.findByText(
+        'Un ou plusieurs sièges ne sont plus disponibles. Actualisez le plan puis réessayez.',
+      ),
+    ).toBeTruthy();
+    expect(getSeatMap).toHaveBeenCalledTimes(2);
+
+    await clickAndWait(
+      screen.getByRole('button', { name: 'Rangée A, siège 1, libre' }),
+    );
+    await clickAndWait(screen.getByRole('button', { name: 'Payer par carte' }));
+    expect(
+      await screen.findByText(
+        'Le paiement est momentanément indisponible. Réessayez.',
+      ),
+    ).toBeTruthy();
   });
 
   it('releases a selected seat immediately when it is deselected', async () => {

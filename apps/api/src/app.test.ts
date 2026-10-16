@@ -4,6 +4,12 @@ import request from 'supertest';
 import { createApp, type SeatService } from './app.js';
 import * as programmeService from './programme/programme.service.js';
 import { SeatUnavailableError } from './seats/seat.service.js';
+import type { PaymentService } from './payments/payment.service.js';
+import {
+  InvalidStripeWebhookError,
+  StripeConfigurationError,
+} from './payments/stripe-gateway.js';
+import { InvalidCheckoutError } from './payments/payment.service.js';
 
 describe('API baseline', () => {
   it('returns a healthy status', async () => {
@@ -28,6 +34,12 @@ describe('API baseline', () => {
     ).toBeDefined();
     expect(
       response.body.paths['/api/showtimes/{showtimeId}/seats/holds'].delete,
+    ).toBeDefined();
+    expect(
+      response.body.paths['/api/showtimes/{showtimeId}/checkout'].post,
+    ).toBeDefined();
+    expect(
+      response.body.paths['/api/payments/sessions/{sessionId}/status'].get,
     ).toBeDefined();
     expect(
       response.body.paths['/api/showtimes/{showtimeId}/seats'].get.parameters,
@@ -222,5 +234,288 @@ describe('API baseline', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error).toBe('INVALID_SEAT_RELEASE_REQUEST');
+  });
+
+  it('creates a Checkout session from the anonymous seat session', async () => {
+    const createCheckout = jest
+      .fn<PaymentService['createCheckout']>()
+      .mockResolvedValue({
+        id: 'cs_test_checkout-1',
+        url: 'https://checkout.stripe.com/test',
+      });
+    const paymentService: PaymentService = {
+      createCheckout,
+      handleWebhook: jest.fn<PaymentService['handleWebhook']>(),
+      getCheckoutStatus: jest
+        .fn<PaymentService['getCheckoutStatus']>()
+        .mockResolvedValue(null),
+    };
+
+    const response = await request(
+      createApp(undefined, undefined, paymentService),
+    )
+      .post('/api/showtimes/showtime-1/checkout')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b')
+      .send({ tickets: [{ seatId: 'seat-1', fare: 'full' }] });
+
+    expect(response.status).toBe(201);
+    expect(response.body).toEqual({
+      id: 'cs_test_checkout-1',
+      url: 'https://checkout.stripe.com/test',
+    });
+    expect(createCheckout).toHaveBeenCalledWith({
+      showtimeId: 'showtime-1',
+      sessionToken: '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b',
+      tickets: [{ seatId: 'seat-1', fare: 'full' }],
+    });
+  });
+
+  it('returns an actionable service-unavailable response when Stripe is not configured', async () => {
+    const paymentService: PaymentService = {
+      createCheckout: jest
+        .fn<PaymentService['createCheckout']>()
+        .mockRejectedValue(
+          new StripeConfigurationError('Stripe test key is missing.'),
+        ),
+      handleWebhook: jest.fn<PaymentService['handleWebhook']>(),
+      getCheckoutStatus: jest
+        .fn<PaymentService['getCheckoutStatus']>()
+        .mockResolvedValue(null),
+    };
+    const logError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const response = await request(
+      createApp(undefined, undefined, paymentService),
+    )
+      .post('/api/showtimes/showtime-1/checkout')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b')
+      .send({ tickets: [{ seatId: 'seat-1', fare: 'full' }] });
+
+    expect(response.status).toBe(503);
+    expect(response.body).toEqual({
+      error: 'STRIPE_NOT_CONFIGURED',
+      message:
+        'Le paiement par carte n’est pas encore configuré. Ajoutez les clés Stripe de test dans le fichier .env.',
+    });
+    expect(logError).toHaveBeenCalled();
+  });
+
+  it('validates Checkout requests and reports missing screenings or expired seats', async () => {
+    const createCheckout = jest
+      .fn<PaymentService['createCheckout']>()
+      .mockRejectedValueOnce(new InvalidCheckoutError('showtime'))
+      .mockRejectedValueOnce(new InvalidCheckoutError('seats'));
+    const paymentService: PaymentService = {
+      createCheckout,
+      handleWebhook: jest.fn<PaymentService['handleWebhook']>(),
+      getCheckoutStatus: jest
+        .fn<PaymentService['getCheckoutStatus']>()
+        .mockResolvedValue(null),
+    };
+    const app = createApp(undefined, undefined, paymentService);
+    const invalid = await request(app)
+      .post('/api/showtimes/showtime-1/checkout')
+      .send({ tickets: [{ seatId: 'seat-1', fare: 'full' }] });
+    const missing = await request(app)
+      .post('/api/showtimes/showtime-1/checkout')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b')
+      .send({ tickets: [{ seatId: 'seat-1', fare: 'full' }] });
+    const unavailable = await request(app)
+      .post('/api/showtimes/showtime-1/checkout')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b')
+      .send({ tickets: [{ seatId: 'seat-1', fare: 'full' }] });
+
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.error).toBe('INVALID_CHECKOUT_REQUEST');
+    expect(missing.status).toBe(404);
+    expect(missing.body.error).toBe('SHOWTIME_NOT_FOUND');
+    expect(unavailable.status).toBe(409);
+    expect(unavailable.body.error).toBe('SEATS_UNAVAILABLE');
+  });
+
+  it('reports a logged error when Checkout creation fails unexpectedly', async () => {
+    const paymentService: PaymentService = {
+      createCheckout: jest
+        .fn<PaymentService['createCheckout']>()
+        .mockRejectedValue(new Error('Stripe unavailable')),
+      handleWebhook: jest.fn<PaymentService['handleWebhook']>(),
+      getCheckoutStatus: jest
+        .fn<PaymentService['getCheckoutStatus']>()
+        .mockResolvedValue(null),
+    };
+    const logError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const response = await request(
+      createApp(undefined, undefined, paymentService),
+    )
+      .post('/api/showtimes/showtime-1/checkout')
+      .set('x-seat-session-token', '7e4cbf13-f749-4b7d-8fa6-28e9fa88f38b')
+      .send({ tickets: [{ seatId: 'seat-1', fare: 'full' }] });
+
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('CHECKOUT_UNAVAILABLE');
+    expect(logError).toHaveBeenCalled();
+  });
+
+  it('returns the persisted Checkout status', async () => {
+    const paymentService: PaymentService = {
+      createCheckout: jest.fn<PaymentService['createCheckout']>(),
+      handleWebhook: jest.fn<PaymentService['handleWebhook']>(),
+      getCheckoutStatus: jest
+        .fn<PaymentService['getCheckoutStatus']>()
+        .mockResolvedValue('CONFIRMED'),
+    };
+
+    const response = await request(
+      createApp(undefined, undefined, paymentService),
+    ).get('/api/payments/sessions/cs_test_checkout-1/status');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ status: 'confirmed' });
+  });
+
+  it('returns bad-request, not-found, and server-error Checkout status responses', async () => {
+    const getCheckoutStatus = jest
+      .fn<PaymentService['getCheckoutStatus']>()
+      .mockResolvedValueOnce(null)
+      .mockRejectedValueOnce(new Error('Database unavailable'));
+    const paymentService: PaymentService = {
+      createCheckout: jest.fn<PaymentService['createCheckout']>(),
+      handleWebhook: jest.fn<PaymentService['handleWebhook']>(),
+      getCheckoutStatus,
+    };
+    const logError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const app = createApp(undefined, undefined, paymentService);
+
+    const invalid = await request(app).get(
+      '/api/payments/sessions/invalid/status',
+    );
+    const missing = await request(app).get(
+      '/api/payments/sessions/cs_test_missing/status',
+    );
+    const failed = await request(app).get(
+      '/api/payments/sessions/cs_test_error/status',
+    );
+
+    expect(invalid.status).toBe(400);
+    expect(invalid.body.error).toBe('INVALID_CHECKOUT_SESSION');
+    expect(missing.status).toBe(404);
+    expect(missing.body.error).toBe('CHECKOUT_SESSION_NOT_FOUND');
+    expect(failed.status).toBe(500);
+    expect(failed.body.error).toBe('CHECKOUT_STATUS_UNAVAILABLE');
+    expect(logError).toHaveBeenCalled();
+  });
+
+  it('passes the raw request body and signature to the Stripe webhook service', async () => {
+    const handleWebhook = jest
+      .fn<PaymentService['handleWebhook']>()
+      .mockResolvedValue();
+    const paymentService: PaymentService = {
+      createCheckout: jest.fn<PaymentService['createCheckout']>(),
+      handleWebhook,
+      getCheckoutStatus: jest
+        .fn<PaymentService['getCheckoutStatus']>()
+        .mockResolvedValue(null),
+    };
+    const rawPayload = Buffer.from('{"type":"checkout.session.completed"}');
+
+    const response = await request(
+      createApp(undefined, undefined, paymentService),
+    )
+      .post('/api/payments/webhook')
+      .set('stripe-signature', 'verified-by-mock')
+      .set('Content-Type', 'application/json')
+      .send(rawPayload.toString());
+
+    expect(response.status).toBe(200);
+    expect(handleWebhook).toHaveBeenCalledWith(
+      expect.any(Buffer),
+      'verified-by-mock',
+    );
+    expect(handleWebhook.mock.calls[0]?.[0].toString()).toBe(
+      rawPayload.toString(),
+    );
+  });
+
+  it('rejects an invalid Stripe webhook signature', async () => {
+    const paymentService: PaymentService = {
+      createCheckout: jest.fn<PaymentService['createCheckout']>(),
+      handleWebhook: jest
+        .fn<PaymentService['handleWebhook']>()
+        .mockRejectedValue(new InvalidStripeWebhookError('Invalid signature')),
+      getCheckoutStatus: jest
+        .fn<PaymentService['getCheckoutStatus']>()
+        .mockResolvedValue(null),
+    };
+    const logError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const response = await request(
+      createApp(undefined, undefined, paymentService),
+    )
+      .post('/api/payments/webhook')
+      .set('stripe-signature', 'invalid')
+      .set('Content-Type', 'application/json')
+      .send(Buffer.from('{}'));
+
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('INVALID_STRIPE_WEBHOOK');
+    expect(logError).toHaveBeenCalled();
+  });
+
+  it('rejects a webhook without a signature and reports webhook service failures', async () => {
+    const paymentService: PaymentService = {
+      createCheckout: jest.fn<PaymentService['createCheckout']>(),
+      handleWebhook: jest
+        .fn<PaymentService['handleWebhook']>()
+        .mockRejectedValue(new Error('Database unavailable')),
+      getCheckoutStatus: jest
+        .fn<PaymentService['getCheckoutStatus']>()
+        .mockResolvedValue(null),
+    };
+    const logError = jest.spyOn(console, 'error').mockImplementation(() => {});
+    const app = createApp(undefined, undefined, paymentService);
+
+    const missingSignature = await request(app)
+      .post('/api/payments/webhook')
+      .set('Content-Type', 'application/json')
+      .send('{}');
+    const failed = await request(app)
+      .post('/api/payments/webhook')
+      .set('stripe-signature', 'valid-shape')
+      .set('Content-Type', 'application/json')
+      .send('{}');
+
+    expect(missingSignature.status).toBe(400);
+    expect(missingSignature.body.error).toBe('INVALID_STRIPE_WEBHOOK');
+    expect(failed.status).toBe(500);
+    expect(failed.body.error).toBe('STRIPE_WEBHOOK_UNAVAILABLE');
+    expect(logError).toHaveBeenCalled();
+  });
+
+  it('returns a service-unavailable response when webhook Stripe credentials are missing', async () => {
+    const paymentService: PaymentService = {
+      createCheckout: jest.fn<PaymentService['createCheckout']>(),
+      handleWebhook: jest
+        .fn<PaymentService['handleWebhook']>()
+        .mockRejectedValue(
+          new StripeConfigurationError('Webhook secret is missing.'),
+        ),
+      getCheckoutStatus: jest
+        .fn<PaymentService['getCheckoutStatus']>()
+        .mockResolvedValue(null),
+    };
+    const logError = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+    const response = await request(
+      createApp(undefined, undefined, paymentService),
+    )
+      .post('/api/payments/webhook')
+      .set('stripe-signature', 'present')
+      .set('Content-Type', 'application/json')
+      .send('{}');
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe('STRIPE_NOT_CONFIGURED');
+    expect(logError).toHaveBeenCalled();
   });
 });

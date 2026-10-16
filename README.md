@@ -36,6 +36,19 @@ npm.cmd run supabase:status
 
 Copiez la clé `anon` affichée par `supabase status` dans `.env` à la place de `SUPABASE_ANON_KEY`. Les variables `.env` ne doivent jamais être commitées.
 
+### Stripe Checkout en mode test
+
+Configurez `STRIPE_SECRET_KEY` avec une clé secrète de test Stripe (`sk_test_…`) et `WEB_BASE_URL=http://localhost:5173` dans `.env`. Sans clé de test, le site reste consultable mais le paiement renvoie une erreur explicite de configuration. Pour recevoir les notifications localement, démarrez Stripe CLI et transférez les événements :
+
+```powershell
+stripe login
+stripe listen --forward-to localhost:3000/api/payments/webhook
+```
+
+Copiez le secret `whsec_…` affiché par Stripe CLI dans `STRIPE_WEBHOOK_SECRET` de `.env`, puis redémarrez l’API. Les clés Stripe réelles ne doivent jamais être ajoutées à `.env.example` ni commitées. Pour simuler un paiement, utilisez les moyens de paiement de test documentés par Stripe, par exemple la carte `4242 4242 4242 4242`, avec une date future et un CVC de test.
+
+Une réservation invitée est confirmée uniquement par le webhook Stripe signé. Les verrous de sièges restent limités à 10 minutes même lorsque Checkout est ouvert ; un paiement accepté après leur expiration n’attribue pas les sièges et doit être traité comme remboursement.
+
 Prisma pilote le schéma applicatif et ses migrations versionnées dans `apps/api/prisma/migrations`. La migration `add_movie_genre` ajoute un genre principal contrôlé au modèle `Movie`.
 
 Depuis la racine du projet, après avoir démarré Supabase, créez une migration Prisma en lui donnant un nom :
@@ -64,6 +77,13 @@ npm.cmd run dev
 - Supabase Studio : <http://localhost:54323>
 
 Docker Compose démarre le front et l’API. Supabase CLI démarre séparément ses services dans Docker ; l’API les joint via `host.docker.internal`.
+
+Les dépendances sont persistées dans des volumes Docker nommés. Après l’ajout ou la modification d’une dépendance, un simple redémarrage ou `docker compose up --build` ne met pas à jour un volume déjà créé. Installez les dépendances du service concerné dans ce volume, puis redémarrez-le ; pour une nouvelle dépendance API :
+
+```powershell
+docker compose exec api npm install --workspace=@le-grand-cinema/api
+docker compose restart api
+```
 
 Pour arrêter les conteneurs applicatifs et Supabase :
 

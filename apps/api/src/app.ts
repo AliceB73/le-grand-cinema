@@ -4,6 +4,15 @@ import { z } from 'zod';
 import { Genre } from '@prisma/client';
 import swaggerUi from 'swagger-ui-express';
 import { openApiDocument } from './docs/openapi.js';
+import {
+  createPaymentService,
+  InvalidCheckoutError,
+  type PaymentService,
+} from './payments/payment.service.js';
+import {
+  InvalidStripeWebhookError,
+  StripeConfigurationError,
+} from './payments/stripe-gateway.js';
 import { getUpcomingProgramme } from './programme/programme.service.js';
 import {
   createTemporarySeatHold,
@@ -36,6 +45,22 @@ const holdRequestSchema = z.object({
     .max(300)
     .refine((seatIds) => new Set(seatIds).size === seatIds.length),
 });
+const checkoutRequestSchema = z.object({
+  tickets: z
+    .array(
+      z.object({
+        seatId: z.string().min(1).max(120),
+        fare: z.enum(['full', 'reduced']),
+      }),
+    )
+    .min(1)
+    .max(300)
+    .refine(
+      (tickets) =>
+        new Set(tickets.map(({ seatId }) => seatId)).size === tickets.length,
+    ),
+});
+const checkoutSessionIdSchema = z.string().startsWith('cs_test_').max(255);
 
 type ProgrammeProvider = () => ReturnType<typeof getUpcomingProgramme>;
 export interface SeatService {
@@ -61,9 +86,55 @@ const defaultSeatService: SeatService = {
 export function createApp(
   programmeProvider: ProgrammeProvider = () => getUpcomingProgramme(),
   seatService: SeatService = defaultSeatService,
+  paymentService: PaymentService = createPaymentService(),
 ) {
   const app = express();
 
+  app.post(
+    '/api/payments/webhook',
+    express.raw({ type: 'application/json' }),
+    async (request, response) => {
+      const signature = request.get('stripe-signature');
+      if (!signature || !Buffer.isBuffer(request.body)) {
+        response.status(400).json({
+          error: 'INVALID_STRIPE_WEBHOOK',
+          message: 'La notification de paiement est invalide.',
+        });
+        return;
+      }
+
+      try {
+        await paymentService.handleWebhook(request.body, signature);
+        response.json({ received: true });
+      } catch (error) {
+        if (error instanceof InvalidStripeWebhookError) {
+          console.error('Rejected an invalid Stripe webhook.');
+          response.status(400).json({
+            error: 'INVALID_STRIPE_WEBHOOK',
+            message: 'La notification de paiement est invalide.',
+          });
+          return;
+        }
+
+        if (error instanceof StripeConfigurationError) {
+          console.error('Stripe webhook handling is not configured.');
+          response.status(503).json({
+            error: 'STRIPE_NOT_CONFIGURED',
+            message:
+              'Le traitement du paiement Stripe n’est pas encore configuré.',
+          });
+          return;
+        }
+
+        console.error('Failed to process a Stripe webhook.', error);
+        response.status(500).json({
+          error: 'STRIPE_WEBHOOK_UNAVAILABLE',
+          message:
+            'La confirmation du paiement est momentanément indisponible.',
+        });
+      }
+    },
+  );
   app.use(express.json());
   app.use(
     cors({
@@ -73,6 +144,93 @@ export function createApp(
   app.get('/api/health', (_request, response) => {
     response.json({ status: 'ok' });
   });
+  app.post('/api/showtimes/:showtimeId/checkout', async (request, response) => {
+    const showtimeId = showtimeIdSchema.safeParse(request.params.showtimeId);
+    const sessionToken = seatSessionTokenSchema.safeParse(
+      request.get('x-seat-session-token'),
+    );
+    const body = checkoutRequestSchema.safeParse(request.body);
+
+    if (!showtimeId.success || !sessionToken.success || !body.success) {
+      response.status(400).json({
+        error: 'INVALID_CHECKOUT_REQUEST',
+        message: 'La demande de paiement est invalide.',
+      });
+      return;
+    }
+
+    try {
+      const checkout = await paymentService.createCheckout({
+        showtimeId: showtimeId.data,
+        sessionToken: sessionToken.data,
+        tickets: body.data.tickets,
+      });
+      response.status(201).json(checkout);
+    } catch (error) {
+      if (error instanceof InvalidCheckoutError) {
+        response.status(error.reason === 'showtime' ? 404 : 409).json({
+          error:
+            error.reason === 'showtime'
+              ? 'SHOWTIME_NOT_FOUND'
+              : 'SEATS_UNAVAILABLE',
+          message:
+            error.reason === 'showtime'
+              ? 'Cette séance n’existe pas.'
+              : 'Un ou plusieurs sièges ne sont plus verrouillés. Actualisez le plan et choisissez à nouveau.',
+        });
+        return;
+      }
+
+      if (error instanceof StripeConfigurationError) {
+        console.error('Stripe Checkout is not configured.');
+        response.status(503).json({
+          error: 'STRIPE_NOT_CONFIGURED',
+          message:
+            'Le paiement par carte n’est pas encore configuré. Ajoutez les clés Stripe de test dans le fichier .env.',
+        });
+        return;
+      }
+
+      console.error('Failed to create a Stripe Checkout session.', error);
+      response.status(500).json({
+        error: 'CHECKOUT_UNAVAILABLE',
+        message: 'Le paiement est momentanément indisponible. Réessayez.',
+      });
+    }
+  });
+  app.get(
+    '/api/payments/sessions/:sessionId/status',
+    async (request, response) => {
+      const sessionId = checkoutSessionIdSchema.safeParse(
+        request.params.sessionId,
+      );
+      if (!sessionId.success) {
+        response.status(400).json({
+          error: 'INVALID_CHECKOUT_SESSION',
+          message: 'La session de paiement est invalide.',
+        });
+        return;
+      }
+
+      try {
+        const status = await paymentService.getCheckoutStatus(sessionId.data);
+        if (!status) {
+          response.status(404).json({
+            error: 'CHECKOUT_SESSION_NOT_FOUND',
+            message: 'Cette session de paiement est introuvable.',
+          });
+          return;
+        }
+        response.json({ status: status.toLowerCase() });
+      } catch (error) {
+        console.error('Failed to retrieve the Checkout status.', error);
+        response.status(500).json({
+          error: 'CHECKOUT_STATUS_UNAVAILABLE',
+          message: 'Le statut du paiement est momentanément indisponible.',
+        });
+      }
+    },
+  );
   app.get('/api/programme', async (_request, response, next) => {
     try {
       const programme = await programmeProvider();
