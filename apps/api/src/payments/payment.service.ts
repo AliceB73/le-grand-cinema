@@ -73,7 +73,7 @@ export interface PaymentGateway {
   ): ReturnType<StripeGateway['constructWebhookEvent']>;
 }
 
-const prismaPaymentRepository: PaymentRepository = {
+export const prismaPaymentRepository: PaymentRepository = {
   getCheckoutData: async (showtimeId, seatIds) => {
     const showtime = await prisma.showtime.findUnique({
       where: { id: showtimeId },

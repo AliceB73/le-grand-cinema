@@ -87,4 +87,27 @@ describe('payment API', () => {
       ),
     );
   });
+
+  it('reports an invalid error response using a non-success fallback', async () => {
+    const fetcher = async () => ({
+      ok: false,
+      status: 502,
+      json: async () => ({ unexpected: true }),
+    });
+
+    await expect(
+      createCheckout(
+        'showtime-1',
+        'anonymous-session',
+        [{ seatId: 'seat-1', fare: 'full' }],
+        fetcher,
+      ),
+    ).rejects.toEqual(
+      new PaymentApiError(
+        502,
+        'UNKNOWN_PAYMENT_API_ERROR',
+        'La requête de paiement a échoué (HTTP 502).',
+      ),
+    );
+  });
 });

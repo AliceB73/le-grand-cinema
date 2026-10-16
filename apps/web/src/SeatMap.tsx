@@ -10,6 +10,7 @@ import {
   type SeatMapItem,
 } from './seat-api';
 import { createCheckout, PaymentApiError } from './payment-api';
+import { redirectToCheckout } from './navigation';
 
 const screeningTimeFormatter = new Intl.DateTimeFormat('fr-FR', {
   timeZone: 'Europe/Paris',
@@ -385,7 +386,7 @@ export default function SeatMap({ screening, onClose }: SeatMapProps) {
           fare: ticketFares[seatId] ?? 'full',
         })),
       );
-      window.location.assign(checkout.url);
+      redirectToCheckout(checkout.url);
     } catch (error) {
       setIsCheckoutPending(false);
       if (error instanceof PaymentApiError && error.status === 409) {

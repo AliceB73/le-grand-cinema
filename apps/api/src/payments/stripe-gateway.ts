@@ -46,104 +46,110 @@ function getStripeClient() {
   return new Stripe(secretKey);
 }
 
-export const stripeGateway: StripeGateway = {
-  async createCheckoutSession(input) {
-    const session = await getStripeClient().checkout.sessions.create(
-      {
-        mode: 'payment',
-        allowed_payment_method_types: ['card'],
-        line_items: Array.from(
-          input.tickets.reduce((grouped, ticket) => {
-            const existing = grouped.get(ticket.fare);
-            grouped.set(ticket.fare, {
-              quantity: (existing?.quantity ?? 0) + 1,
-              amountCents: ticket.amountCents,
-            });
-            return grouped;
-          }, new Map<'full' | 'reduced', { quantity: number; amountCents: number }>()),
-          ([fare, item]) => ({
-            quantity: item.quantity,
-            price_data: {
-              currency: 'eur',
-              unit_amount: item.amountCents,
-              product_data: {
-                name: `${fare === 'reduced' ? 'Tarif réduit' : 'Plein tarif'} — ${input.movieTitle}`,
+export function createStripeGateway(
+  getClient: () => Stripe = getStripeClient,
+): StripeGateway {
+  return {
+    async createCheckoutSession(input) {
+      const session = await getClient().checkout.sessions.create(
+        {
+          mode: 'payment',
+          allowed_payment_method_types: ['card'],
+          line_items: Array.from(
+            input.tickets.reduce((grouped, ticket) => {
+              const existing = grouped.get(ticket.fare);
+              grouped.set(ticket.fare, {
+                quantity: (existing?.quantity ?? 0) + 1,
+                amountCents: ticket.amountCents,
+              });
+              return grouped;
+            }, new Map<'full' | 'reduced', { quantity: number; amountCents: number }>()),
+            ([fare, item]) => ({
+              quantity: item.quantity,
+              price_data: {
+                currency: 'eur',
+                unit_amount: item.amountCents,
+                product_data: {
+                  name: `${fare === 'reduced' ? 'Tarif réduit' : 'Plein tarif'} — ${input.movieTitle}`,
+                },
               },
-            },
-          }),
-        ),
-        metadata: {
-          bookingId: input.bookingId,
-          showtimeId: input.showtimeId,
+            }),
+          ),
+          metadata: {
+            bookingId: input.bookingId,
+            showtimeId: input.showtimeId,
+          },
+          success_url: input.successUrl,
+          cancel_url: input.cancelUrl,
+          expires_at: input.expiresAt,
         },
-        success_url: input.successUrl,
-        cancel_url: input.cancelUrl,
-        expires_at: input.expiresAt,
-      },
-      { idempotencyKey: input.bookingId },
-    );
-
-    if (!session.url) {
-      throw new Error('Stripe did not return a Checkout URL.');
-    }
-
-    return { id: session.id, url: session.url };
-  },
-  constructWebhookEvent(payload, signature) {
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    if (!webhookSecret?.startsWith('whsec_')) {
-      throw new StripeConfigurationError(
-        'Configure STRIPE_WEBHOOK_SECRET with the signing secret provided by Stripe CLI.',
+        { idempotencyKey: input.bookingId },
       );
-    }
 
-    let event: Stripe.Event;
-    try {
-      event = getStripeClient().webhooks.constructEvent(
-        payload,
-        signature,
-        webhookSecret,
-      );
-    } catch (error) {
-      throw new InvalidStripeWebhookError(
-        'Stripe webhook signature verification failed.',
-        { cause: error },
-      );
-    }
-    if (
-      event.type === 'checkout.session.completed' ||
-      event.type === 'checkout.session.async_payment_succeeded'
-    ) {
-      const session = event.data.object;
-      const bookingId = session.metadata?.bookingId;
-      if (!bookingId) {
-        throw new InvalidStripeWebhookError(
-          'Stripe Checkout session is missing booking metadata.',
+      if (!session.url) {
+        throw new Error('Stripe did not return a Checkout URL.');
+      }
+
+      return { id: session.id, url: session.url };
+    },
+    constructWebhookEvent(payload, signature) {
+      const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+      if (!webhookSecret?.startsWith('whsec_')) {
+        throw new StripeConfigurationError(
+          'Configure STRIPE_WEBHOOK_SECRET with the signing secret provided by Stripe CLI.',
         );
       }
-      return {
-        type: 'checkout.session.completed',
-        bookingId,
-        sessionId: session.id,
-        email: session.customer_details?.email ?? null,
-        paymentStatus: session.payment_status,
-      };
-    }
-    if (event.type === 'checkout.session.expired') {
-      const session = event.data.object;
-      const bookingId = session.metadata?.bookingId;
-      if (!bookingId) {
+
+      let event: Stripe.Event;
+      try {
+        event = getClient().webhooks.constructEvent(
+          payload,
+          signature,
+          webhookSecret,
+        );
+      } catch (error) {
         throw new InvalidStripeWebhookError(
-          'Expired Stripe Checkout session is missing booking metadata.',
+          'Stripe webhook signature verification failed.',
+          { cause: error },
         );
       }
-      return {
-        type: 'checkout.session.expired',
-        bookingId,
-        sessionId: session.id,
-      };
-    }
+      if (
+        event.type === 'checkout.session.completed' ||
+        event.type === 'checkout.session.async_payment_succeeded'
+      ) {
+        const session = event.data.object;
+        const bookingId = session.metadata?.bookingId;
+        if (!bookingId) {
+          throw new InvalidStripeWebhookError(
+            'Stripe Checkout session is missing booking metadata.',
+          );
+        }
+        return {
+          type: 'checkout.session.completed',
+          bookingId,
+          sessionId: session.id,
+          email: session.customer_details?.email ?? null,
+          paymentStatus: session.payment_status,
+        };
+      }
+      if (event.type === 'checkout.session.expired') {
+        const session = event.data.object;
+        const bookingId = session.metadata?.bookingId;
+        if (!bookingId) {
+          throw new InvalidStripeWebhookError(
+            'Expired Stripe Checkout session is missing booking metadata.',
+          );
+        }
+        return {
+          type: 'checkout.session.expired',
+          bookingId,
+          sessionId: session.id,
+        };
+      }
 
-    return { type: 'ignored' };
-  },
-};
+      return { type: 'ignored' };
+    },
+  };
+}
+
+export const stripeGateway = createStripeGateway();

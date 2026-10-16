@@ -108,6 +108,78 @@ describe('App', () => {
     ).toBeTruthy();
   });
 
+  it('shows a message when Checkout is cancelled or returns without its session id', async () => {
+    jest.mocked(getProgramme).mockResolvedValue([]);
+    window.history.replaceState({}, '', '/?payment=cancelled');
+
+    const { unmount } = render(<App />);
+    expect(
+      await screen.findByText(
+        'Paiement annulé. Les sièges sélectionnés resteront bloqués au plus 10 minutes.',
+      ),
+    ).toBeTruthy();
+    unmount();
+
+    window.history.replaceState({}, '', '/?payment=success');
+    render(<App />);
+    expect(
+      await screen.findByText(
+        'Le retour de paiement est incomplet. Vérifiez votre e-mail ou contactez le cinéma.',
+      ),
+    ).toBeTruthy();
+    expect(getCheckoutStatus).not.toHaveBeenCalled();
+  });
+
+  it('polls pending Checkout until it is cancelled', async () => {
+    jest.useFakeTimers();
+    jest.mocked(getProgramme).mockResolvedValue([]);
+    jest
+      .mocked(getCheckoutStatus)
+      .mockResolvedValueOnce({ status: 'pending' })
+      .mockResolvedValueOnce({ status: 'cancelled' });
+    window.history.replaceState(
+      {},
+      '',
+      '/?payment=success&session_id=cs_test_checkout-1',
+    );
+
+    render(<App />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByText('Confirmation du paiement en cours…')).toBeTruthy();
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(2000);
+    });
+    expect(
+      screen.getByText(
+        'Le paiement n’a pas été finalisé. Les sièges seront libérés à l’expiration de leur verrou.',
+      ),
+    ).toBeTruthy();
+    expect(getCheckoutStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows an error if the Checkout status cannot be retrieved', async () => {
+    jest.mocked(getProgramme).mockResolvedValue([]);
+    jest
+      .mocked(getCheckoutStatus)
+      .mockRejectedValue(new Error('API unavailable'));
+    window.history.replaceState(
+      {},
+      '',
+      '/?payment=success&session_id=cs_test_checkout-1',
+    );
+
+    render(<App />);
+    expect(
+      await screen.findByText(
+        'Le statut du paiement est momentanément indisponible. Vérifiez votre e-mail avant de réessayer.',
+      ),
+    ).toBeTruthy();
+  });
+
   it('opens the details panel, enters seat selection, and closes with Escape', async () => {
     jest.mocked(getProgramme).mockResolvedValue([
       {

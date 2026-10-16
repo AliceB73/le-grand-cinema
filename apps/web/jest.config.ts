@@ -9,6 +9,8 @@ const config: Config = {
     '<rootDir>/src/programme-api.ts',
     '<rootDir>/src/SeatMap.tsx',
     '<rootDir>/src/seat-api.ts',
+    '<rootDir>/src/payment-api.ts',
+    '<rootDir>/src/navigation.ts',
   ],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   transform: {
