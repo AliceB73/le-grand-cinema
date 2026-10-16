@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { BookingStatus } from '@prisma/client';
 import { prisma } from '../data/prisma.js';
+import { hashTicketToken, createTicketToken } from '../tickets/ticket-token.js';
 import { stripeGateway, type StripeGateway } from './stripe-gateway.js';
 
 export type TicketFare = 'full' | 'reduced';
@@ -49,7 +50,10 @@ export interface PaymentRepository {
     sessionId: string,
     email: string | null,
     now: Date,
-  ): Promise<'confirmed' | 'refund_required' | 'ignored'>;
+    ticketTokenHash: string,
+  ): Promise<
+    'confirmed' | 'confirmed_email_missing' | 'refund_required' | 'ignored'
+  >;
   cancelPendingBooking(bookingId: string, sessionId: string): Promise<void>;
   getBookingStatus(sessionId: string): Promise<BookingStatus | null>;
 }
@@ -126,7 +130,13 @@ export const prismaPaymentRepository: PaymentRepository = {
       where: { id: bookingId, status: BookingStatus.PENDING },
     });
   },
-  confirmPaidBooking: async (bookingId, sessionId, email, now) =>
+  confirmPaidBooking: async (
+    bookingId,
+    sessionId,
+    email,
+    now,
+    ticketTokenHash,
+  ) =>
     prisma.$transaction(async (transaction) => {
       const booking = await transaction.booking.findUnique({
         where: { id: bookingId },
@@ -162,7 +172,11 @@ export const prismaPaymentRepository: PaymentRepository = {
           stripeCheckoutSessionId: sessionId,
           status: BookingStatus.PENDING,
         },
-        data: { status: BookingStatus.CONFIRMED, guestEmail: email },
+        data: {
+          status: BookingStatus.CONFIRMED,
+          guestEmail: email,
+          ticketTokenHash,
+        },
       });
       if (claimedBooking.count !== 1) {
         const latestBooking = await transaction.booking.findUnique({
@@ -209,7 +223,15 @@ export const prismaPaymentRepository: PaymentRepository = {
         return 'refund_required';
       }
 
-      return 'confirmed';
+      await transaction.emailDelivery.create({
+        data: {
+          bookingId: booking.id,
+          status: email ? 'PENDING' : 'FAILED',
+          lastError: email ? null : 'MISSING_RECIPIENT_EMAIL',
+        },
+      });
+
+      return email ? 'confirmed' : 'confirmed_email_missing';
     }),
   cancelPendingBooking: async (bookingId, sessionId) => {
     await prisma.booking.updateMany({
@@ -241,10 +263,18 @@ export class InvalidCheckoutError extends Error {
   }
 }
 
+export class TicketTokenConfigurationError extends Error {
+  constructor() {
+    super('Configure TICKET_TOKEN_SECRET with at least 32 characters.');
+    this.name = 'TicketTokenConfigurationError';
+  }
+}
+
 export function createPaymentService(
   repository: PaymentRepository = prismaPaymentRepository,
   gateway: PaymentGateway = stripeGateway,
   webBaseUrl = process.env.WEB_BASE_URL ?? 'http://localhost:5173',
+  ticketTokenSecret = process.env.TICKET_TOKEN_SECRET,
 ) {
   return {
     async createCheckout(input: CheckoutRequest) {
@@ -330,15 +360,27 @@ export function createPaymentService(
         if (event.paymentStatus !== 'paid') {
           return;
         }
+        if (!ticketTokenSecret || ticketTokenSecret.length < 32) {
+          throw new TicketTokenConfigurationError();
+        }
+        const ticketToken = createTicketToken(
+          event.bookingId,
+          ticketTokenSecret,
+        );
         const result = await repository.confirmPaidBooking(
           event.bookingId,
           event.sessionId,
           event.email,
           new Date(),
+          hashTicketToken(ticketToken),
         );
         if (result === 'refund_required') {
           console.error(
             'A Stripe payment needs a refund because its seat holds have expired.',
+          );
+        } else if (result === 'confirmed_email_missing') {
+          console.error(
+            'Stripe confirmed payment without a recipient email; the ticket email cannot be delivered.',
           );
         }
         return;

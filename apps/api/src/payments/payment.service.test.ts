@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { BookingStatus, type Prisma } from '@prisma/client';
 import { prisma } from '../data/prisma.js';
+import { createTicketToken, hashTicketToken } from '../tickets/ticket-token.js';
 import {
   createPaymentService,
   InvalidCheckoutError,
@@ -265,7 +266,12 @@ describe('payment service', () => {
           sessionId: 'cs_test_checkout-2',
         }),
     });
-    const service = createPaymentService(repository, gateway);
+    const service = createPaymentService(
+      repository,
+      gateway,
+      undefined,
+      'unit-test-ticket-token-secret-32chars',
+    );
 
     await service.handleWebhook(Buffer.from('{}'), 'signature');
     await service.handleWebhook(Buffer.from('{}'), 'signature');
@@ -278,6 +284,9 @@ describe('payment service', () => {
       'cs_test_checkout-1',
       'spectateur@example.com',
       expect.any(Date),
+      hashTicketToken(
+        createTicketToken('booking-1', 'unit-test-ticket-token-secret-32chars'),
+      ),
     );
     expect(repository.cancelPendingBooking).toHaveBeenCalledWith(
       'booking-2',
@@ -303,7 +312,12 @@ describe('payment service', () => {
         }),
     });
     const logError = jest.spyOn(console, 'error').mockImplementation(() => {});
-    const service = createPaymentService(repository, gateway);
+    const service = createPaymentService(
+      repository,
+      gateway,
+      undefined,
+      'unit-test-ticket-token-secret-32chars',
+    );
 
     await service.handleWebhook(Buffer.from('{}'), 'signature');
 
@@ -403,6 +417,11 @@ describe('payment service', () => {
     const transaction = {
       booking: { findUnique, updateMany: bookingUpdateMany },
       seat: { updateMany: seatUpdateMany },
+      emailDelivery: {
+        create: jest
+          .fn<(args: object) => Promise<unknown>>()
+          .mockResolvedValue({}),
+      },
     } as unknown as Prisma.TransactionClient;
     jest
       .spyOn(prisma, '$transaction')
@@ -415,6 +434,7 @@ describe('payment service', () => {
         'cs_test_checkout-1',
         'spectateur@example.com',
         now,
+        'ticket-token-hash',
       ),
     ).resolves.toBe('confirmed');
 
@@ -427,7 +447,11 @@ describe('payment service', () => {
       data: {
         status: BookingStatus.CONFIRMED,
         guestEmail: 'spectateur@example.com',
+        ticketTokenHash: 'ticket-token-hash',
       },
+    });
+    expect(transaction.emailDelivery.create).toHaveBeenCalledWith({
+      data: { bookingId: 'booking-1', status: 'PENDING', lastError: null },
     });
     expect(seatUpdateMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -444,6 +468,56 @@ describe('payment service', () => {
         data: { bookingId: 'booking-1', holdId: null },
       }),
     );
+  });
+
+  it('keeps a paid reservation confirmed but records delivery failure without an email', async () => {
+    const transaction = {
+      booking: {
+        findUnique: jest
+          .fn<(args: object) => Promise<unknown>>()
+          .mockResolvedValue({
+            id: 'booking-1',
+            showtimeId: 'showtime-1',
+            seatIds: ['seat-1'],
+            seatHoldTokenHash: sessionTokenHash,
+            stripeCheckoutSessionId: 'cs_test_checkout-1',
+            status: BookingStatus.PENDING,
+          }),
+        updateMany: jest
+          .fn<(args: object) => Promise<{ count: number }>>()
+          .mockResolvedValue({ count: 1 }),
+      },
+      seat: {
+        updateMany: jest
+          .fn<(args: object) => Promise<{ count: number }>>()
+          .mockResolvedValue({ count: 1 }),
+      },
+      emailDelivery: {
+        create: jest
+          .fn<(args: object) => Promise<unknown>>()
+          .mockResolvedValue({}),
+      },
+    } as unknown as Prisma.TransactionClient;
+    jest
+      .spyOn(prisma, '$transaction')
+      .mockImplementation((callback) => callback(transaction));
+
+    await expect(
+      prismaPaymentRepository.confirmPaidBooking(
+        'booking-1',
+        'cs_test_checkout-1',
+        null,
+        new Date(),
+        'ticket-token-hash',
+      ),
+    ).resolves.toBe('confirmed_email_missing');
+    expect(transaction.emailDelivery.create).toHaveBeenCalledWith({
+      data: {
+        bookingId: 'booking-1',
+        status: 'FAILED',
+        lastError: 'MISSING_RECIPIENT_EMAIL',
+      },
+    });
   });
 
   it('requires a refund and releases any partially assigned seats when a hold expires', async () => {
@@ -484,6 +558,7 @@ describe('payment service', () => {
         'cs_test_checkout-1',
         'spectateur@example.com',
         new Date(),
+        'ticket-token-hash',
       ),
     ).resolves.toBe('refund_required');
     expect(seatUpdateMany).toHaveBeenLastCalledWith({
@@ -547,6 +622,7 @@ describe('payment service', () => {
         'wrong-session',
         null,
         new Date(),
+        'ticket-token-hash',
       ),
     ).resolves.toBe('ignored');
     await expect(
@@ -555,6 +631,7 @@ describe('payment service', () => {
         'cs_test_checkout-1',
         null,
         new Date(),
+        'ticket-token-hash',
       ),
     ).resolves.toBe('confirmed');
     await expect(
@@ -563,6 +640,7 @@ describe('payment service', () => {
         'cs_test_checkout-1',
         null,
         new Date(),
+        'ticket-token-hash',
       ),
     ).resolves.toBe('refund_required');
     await expect(
@@ -571,6 +649,7 @@ describe('payment service', () => {
         'cs_test_checkout-1',
         null,
         new Date(),
+        'ticket-token-hash',
       ),
     ).resolves.toBe('ignored');
   });
@@ -613,6 +692,7 @@ describe('payment service', () => {
         'cs_test_checkout-1',
         null,
         new Date(),
+        'ticket-token-hash',
       );
     await expect(confirm()).resolves.toBe('confirmed');
     await expect(confirm()).resolves.toBe('refund_required');

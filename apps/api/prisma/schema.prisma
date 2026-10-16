@@ -20,6 +20,13 @@ enum BookingStatus {
   REFUND_REQUIRED
 }
 
+enum EmailDeliveryStatus {
+  PENDING
+  SENDING
+  SENT
+  FAILED
+}
+
 enum Genre {
   ACTION
   ANIMATION
@@ -95,9 +102,29 @@ model Booking {
   seatHoldTokenHash       String?
   seatIds                 String[]      @default([])
   totalAmountCents        Int?
+  ticketTokenHash         String?             @unique
+  checkedInAt             DateTime?
+  emailDelivery            EmailDelivery?
   seats                   Seat[]
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
+}
+
+model EmailDelivery {
+  id            String              @id @default(uuid())
+  bookingId     String              @unique
+  booking       Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  status        EmailDeliveryStatus @default(PENDING)
+  attempts      Int                 @default(0)
+  nextAttemptAt DateTime            @default(now())
+  lockedUntil   DateTime?
+  lastError     String?
+  sentAt        DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([status, nextAttemptAt])
+  @@index([status, lockedUntil])
 }
 
 model Seat {

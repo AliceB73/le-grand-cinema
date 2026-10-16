@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { prisma } from './data/prisma.js';
 import { createApp } from './app.js';
 import { loadEnvironment } from './config/env.js';
+import { startTicketEmailWorker } from './tickets/email-delivery.js';
 
 const projectRoot = resolve(__dirname, '../../..');
 config({ path: resolve(projectRoot, '.env') });
@@ -12,11 +13,13 @@ async function startServer() {
   const app = createApp();
 
   await prisma.$connect();
+  const stopTicketEmailWorker = startTicketEmailWorker();
   const server = app.listen(environment.PORT, '0.0.0.0', () => {
     console.info(`API listening on port ${environment.PORT}`);
   });
 
   async function shutdown() {
+    await stopTicketEmailWorker();
     server.close();
     await prisma.$disconnect();
   }

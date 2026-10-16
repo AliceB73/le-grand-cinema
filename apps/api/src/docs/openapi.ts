@@ -124,6 +124,44 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: 'post',
+  path: '/api/tickets/check-in',
+  summary: 'Contrôler un billet à l’entrée',
+  description:
+    'Réservé au personnel authentifié ayant le rôle administrateur. Le premier contrôle d’un QR code confirmé consomme le billet ; les contrôles suivants sont refusés.',
+  request: {
+    headers: z.object({
+      authorization: z.string().startsWith('Bearer '),
+    }),
+    body: {
+      content: {
+        'application/json': {
+          schema: z.object({
+            qrCode: z.string().regex(/^lgc1_[A-Za-z0-9_-]{43}$/),
+          }),
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: 'Billet accepté et marqué comme utilisé',
+      content: {
+        'application/json': {
+          schema: z.object({ status: z.literal('accepted') }),
+        },
+      },
+    },
+    401: { description: 'Authentification du personnel requise ou invalide' },
+    403: { description: 'Rôle administrateur requis' },
+    404: { description: 'Billet inconnu ou non confirmé' },
+    409: { description: 'Billet déjà utilisé' },
+    503: { description: 'Service d’authentification indisponible' },
+  },
+});
+
+registry.registerPath({
   method: 'get',
   path: '/api/health',
   summary: 'Vérifier la disponibilité de l’API',

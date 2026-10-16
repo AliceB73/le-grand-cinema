@@ -10,6 +10,15 @@ import {
   type PaymentService,
 } from './payments/payment.service.js';
 import {
+  AdminAuthenticationError,
+  createAdminAuthenticator,
+  type AdminAuthenticator,
+} from './auth/admin-auth.js';
+import {
+  createTicketService,
+  type TicketService,
+} from './tickets/ticket.service.js';
+import {
   InvalidStripeWebhookError,
   StripeConfigurationError,
 } from './payments/stripe-gateway.js';
@@ -61,6 +70,9 @@ const checkoutRequestSchema = z.object({
     ),
 });
 const checkoutSessionIdSchema = z.string().startsWith('cs_test_').max(255);
+const ticketCheckInRequestSchema = z.object({
+  qrCode: z.string().regex(/^lgc1_[A-Za-z0-9_-]{43}$/),
+});
 
 type ProgrammeProvider = () => ReturnType<typeof getUpcomingProgramme>;
 export interface SeatService {
@@ -87,6 +99,8 @@ export function createApp(
   programmeProvider: ProgrammeProvider = () => getUpcomingProgramme(),
   seatService: SeatService = defaultSeatService,
   paymentService: PaymentService = createPaymentService(),
+  ticketService: TicketService = createTicketService(),
+  adminAuthenticator: AdminAuthenticator = createAdminAuthenticator(),
 ) {
   const app = express();
 
@@ -143,6 +157,70 @@ export function createApp(
   );
   app.get('/api/health', (_request, response) => {
     response.json({ status: 'ok' });
+  });
+  app.post('/api/tickets/check-in', async (request, response) => {
+    try {
+      await adminAuthenticator.authorize(request.get('authorization'));
+    } catch (error) {
+      if (error instanceof AdminAuthenticationError) {
+        if (error.reason === 'unavailable') {
+          console.error('Ticket check-in authentication is unavailable.');
+          response.status(503).json({
+            error: 'AUTHENTICATION_UNAVAILABLE',
+            message: 'Le contrôle d’accès est momentanément indisponible.',
+          });
+          return;
+        }
+        const forbidden = error.reason === 'forbidden';
+        response.status(forbidden ? 403 : 401).json({
+          error: forbidden ? 'ADMIN_REQUIRED' : 'AUTHENTICATION_REQUIRED',
+          message: forbidden
+            ? 'Un accès administrateur est nécessaire.'
+            : 'Une authentification du personnel est nécessaire.',
+        });
+        return;
+      }
+      console.error('Ticket check-in authorization failed.', error);
+      response.status(500).json({
+        error: 'AUTHORIZATION_UNAVAILABLE',
+        message: 'Le contrôle d’accès est momentanément indisponible.',
+      });
+      return;
+    }
+
+    const body = ticketCheckInRequestSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({
+        error: 'INVALID_TICKET_QR',
+        message: 'Le QR code présenté est invalide.',
+      });
+      return;
+    }
+
+    try {
+      const result = await ticketService.checkIn(body.data.qrCode);
+      if (result === 'invalid') {
+        response.status(404).json({
+          error: 'TICKET_NOT_FOUND',
+          message: 'Ce billet est invalide ou n’est pas confirmé.',
+        });
+        return;
+      }
+      if (result === 'already_used') {
+        response.status(409).json({
+          error: 'TICKET_ALREADY_USED',
+          message: 'Ce billet a déjà été utilisé.',
+        });
+        return;
+      }
+      response.json({ status: 'accepted' });
+    } catch (error) {
+      console.error('Failed to validate a ticket at check-in.', error);
+      response.status(500).json({
+        error: 'TICKET_CHECK_IN_UNAVAILABLE',
+        message: 'Le contrôle du billet est momentanément indisponible.',
+      });
+    }
   });
   app.post('/api/showtimes/:showtimeId/checkout', async (request, response) => {
     const showtimeId = showtimeIdSchema.safeParse(request.params.showtimeId);
