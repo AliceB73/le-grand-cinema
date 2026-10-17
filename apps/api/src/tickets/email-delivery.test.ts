@@ -14,6 +14,51 @@ import { createTicketToken, hashTicketToken } from './ticket-token.js';
 const tokenSecret = 'unit-test-ticket-token-secret-32chars';
 
 describe('ticket email delivery', () => {
+  it('sends a cancellation notice without a QR attachment', async () => {
+    const repository: TicketEmailRepository = {
+      claimNext: jest
+        .fn<(now: Date) => Promise<ClaimedDelivery | null>>()
+        .mockResolvedValue({
+          id: 'delivery-2',
+          attempts: 1,
+          kind: 'SHOWTIME_CANCELLED',
+        }),
+      getEmailData: jest.fn<TicketEmailRepository['getEmailData']>(),
+      getCancellationData: jest
+        .fn<NonNullable<TicketEmailRepository['getCancellationData']>>()
+        .mockResolvedValue({
+          bookingId: 'booking-1',
+          email: 'spectateur@example.com',
+          movieTitle: 'Le Film',
+          startTime: new Date('2026-10-16T18:00:00.000Z'),
+          roomName: 'Salle A',
+        }),
+      markSent: jest
+        .fn<TicketEmailRepository['markSent']>()
+        .mockResolvedValue(undefined),
+      recordFailure: jest
+        .fn<TicketEmailRepository['recordFailure']>()
+        .mockResolvedValue(undefined),
+    };
+    const send = jest
+      .fn<TicketEmailSender['send']>()
+      .mockResolvedValue(undefined);
+    const worker = createTicketEmailWorker(repository, { send }, tokenSecret);
+
+    await worker.processNext();
+
+    expect(send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: 'spectateur@example.com',
+        subject: 'Séance annulée : Le Film',
+        idempotencyKey: 'delivery-2',
+      }),
+    );
+    expect(send.mock.calls[0]?.[0].qrImage).toBeUndefined();
+    expect(repository.getEmailData).not.toHaveBeenCalled();
+    expect(repository.markSent).toHaveBeenCalled();
+  });
+
   it('renders the QR locally and sends a French ticket with a stable idempotency key', async () => {
     const bookingId = 'booking-1';
     const repository: TicketEmailRepository = {
@@ -190,7 +235,7 @@ describe('ticket email delivery', () => {
         attempts: { increment: 1 },
         lockedUntil: new Date(now.getTime() + 60_000),
       },
-      select: { id: true, attempts: true },
+      select: { id: true, attempts: true, kind: true },
     });
     transactionSpy.mockRestore();
   });

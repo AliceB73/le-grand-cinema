@@ -107,3 +107,7 @@ npm.cmd run test:e2e
 ```
 
 Les tests bout en bout Playwright lancent le serveur front automatiquement. Le workflow GitHub Actions requiert les secrets `SONAR_TOKEN`, `SONAR_ORGANIZATION` et `SONAR_PROJECT_KEY` pour analyser le projet dans SonarCloud.
+
+## Espace administrateur
+
+Apr�s `prisma:migrate` puis `db:seed`, un compte admin de d�mo est cr�� (`admin@legrandcinema.local` / `AdminDemo-2026!`, modifiables via `ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD`). Le seed requiert `SUPABASE_URL` et `SUPABASE_SERVICE_ROLE_KEY`. L'espace est accessible sur `/admin`.

@@ -1,8 +1,23 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { hasAdminAccess } from './admin-api';
 import { useAuthSession } from './AuthSessionProvider';
 
 export default function SiteHeader() {
   const { authErrorMessage, email, isReady, signOut } = useAuthSession();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!email) {
+      setIsAdmin(false);
+      return;
+    }
+    let isMounted = true;
+    void hasAdminAccess().then((result) => isMounted && setIsAdmin(result));
+    return () => {
+      isMounted = false;
+    };
+  }, [email]);
 
   return (
     <header className="border-b border-slate-800 bg-slate-950 px-6 py-4 sm:px-10">
@@ -26,6 +41,14 @@ export default function SiteHeader() {
               >
                 Mes billets
               </Link>
+              {isAdmin && (
+                <Link
+                  className="rounded-lg px-3 py-2 text-sm font-semibold text-amber-300 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"
+                  to="/admin"
+                >
+                  Administration
+                </Link>
+              )}
               <p className="text-sm text-slate-300">{email}</p>
               <button
                 className="rounded-lg border border-slate-500 px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"

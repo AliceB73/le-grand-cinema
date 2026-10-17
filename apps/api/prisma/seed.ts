@@ -1,5 +1,6 @@
-import { Genre, PrismaClient, RoomCategory } from '@prisma/client';
+import { Genre, PrismaClient, Role, RoomCategory } from '@prisma/client';
 import { generateDemoShowtimes } from '../src/programme/demo-schedule.js';
+import { buildSeatLayout } from '../src/seats/seat-layout.js';
 
 const prisma = new PrismaClient();
 
@@ -69,7 +70,51 @@ const movies = [
   },
 ] as const;
 
+async function seedAdminAccount() {
+  if (process.env.NODE_ENV === 'production') {
+    return;
+  }
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.warn(
+      'Skipped the demo admin account: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.',
+    );
+    return;
+  }
+  const email = (
+    process.env.ADMIN_SEED_EMAIL ?? 'admin@legrandcinema.local'
+  ).toLowerCase();
+  const password = process.env.ADMIN_SEED_PASSWORD ?? 'AdminDemo-2026!';
+
+  const response = await fetch(new URL('/auth/v1/admin/users', supabaseUrl), {
+    method: 'POST',
+    headers: {
+      apikey: serviceRoleKey,
+      authorization: `Bearer ${serviceRoleKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ email, password, email_confirm: true }),
+  });
+  // 422 means the account already exists, which keeps the seed idempotent.
+  if (!response.ok && response.status !== 422) {
+    throw new Error(`Supabase Auth admin API answered ${response.status}.`);
+  }
+
+  const promoted = await prisma.user.updateMany({
+    where: { email },
+    data: { role: Role.ADMIN },
+  });
+  if (promoted.count !== 1) {
+    throw new Error(
+      'The admin account is missing from public.User; apply the Prisma migrations first.',
+    );
+  }
+  console.info(`Demo admin account ready: ${email}`);
+}
+
 async function seed() {
+  await seedAdminAccount();
   let totalShowtimes = 0;
 
   for (const room of roomTypes) {
@@ -134,13 +179,11 @@ async function seed() {
         },
       });
 
-      const seats = Array.from({ length: layout.capacity }, (_, index) => ({
-        showtimeId: screening.id,
-        rowNumber: String.fromCharCode(
-          'A'.charCodeAt(0) + Math.floor(index / layout.seatsPerRow),
-        ),
-        seatNumber: (index % layout.seatsPerRow) + 1,
-      }));
+      const seats = buildSeatLayout(
+        screening.id,
+        layout.capacity,
+        layout.category,
+      );
 
       await prisma.seat.createMany({
         data: seats,

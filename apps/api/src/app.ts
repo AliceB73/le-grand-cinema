@@ -33,6 +33,13 @@ import {
 } from './payments/stripe-gateway.js';
 import { getUpcomingProgramme } from './programme/programme.service.js';
 import {
+  AdminNotFoundError,
+  AdminRuleError,
+  ShowtimeConflictError,
+  createAdminService,
+  type AdminService,
+} from './admin/admin.service.js';
+import {
   createTemporarySeatHold,
   getSeatMap,
   releaseTemporarySeatHold,
@@ -82,6 +89,22 @@ const checkoutSessionIdSchema = z.string().startsWith('cs_test_').max(255);
 const ticketCheckInRequestSchema = z.object({
   qrCode: z.string().regex(/^lgc1_[A-Za-z0-9_-]{43}$/),
 });
+const adminShowtimeCreateSchema = z.object({
+  movieId: z.string().min(1).max(120),
+  roomId: z.string().min(1).max(120),
+  startTime: z.string().datetime(),
+  price: z.number().positive().max(1000),
+});
+const adminShowtimeUpdateSchema = z.object({
+  price: z.number().positive().max(1000),
+});
+const adminMovieSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+  genre: z.nativeEnum(Genre),
+  description: z.string().trim().min(1).max(2000),
+  duration: z.number().int().min(1).max(600),
+  posterUrl: z.string().trim().max(500).nullable().optional(),
+});
 
 type ProgrammeProvider = () => ReturnType<typeof getUpcomingProgramme>;
 export interface SeatService {
@@ -112,6 +135,7 @@ export function createApp(
   adminAuthenticator: AdminAuthenticator = createAdminAuthenticator(),
   customerAuthenticator: CustomerAuthenticator = createCustomerAuthenticator(),
   customerTicketService: CustomerTicketService = createCustomerTicketService(),
+  adminService: AdminService = createAdminService(),
 ) {
   const app = express();
 
@@ -545,6 +569,208 @@ export function createApp(
       });
     }
   });
+  async function authorizeAdmin(
+    request: express.Request,
+    response: express.Response,
+  ) {
+    try {
+      await adminAuthenticator.authorize(request.get('authorization'));
+      return true;
+    } catch (error) {
+      if (error instanceof AdminAuthenticationError) {
+        if (error.reason === 'unavailable') {
+          response.status(503).json({
+            error: 'AUTHENTICATION_UNAVAILABLE',
+            message: 'L’espace administrateur est momentanément indisponible.',
+          });
+          return false;
+        }
+        const forbidden = error.reason === 'forbidden';
+        response.status(forbidden ? 403 : 401).json({
+          error: forbidden ? 'ADMIN_REQUIRED' : 'AUTHENTICATION_REQUIRED',
+          message: forbidden
+            ? 'Un accès administrateur est nécessaire.'
+            : 'Une authentification est nécessaire.',
+        });
+        return false;
+      }
+      console.error('Admin authorization failed.', error);
+      response.status(500).json({
+        error: 'AUTHORIZATION_UNAVAILABLE',
+        message: 'L’espace administrateur est momentanément indisponible.',
+      });
+      return false;
+    }
+  }
+
+  function adminRoute(
+    handler: (
+      request: express.Request,
+      response: express.Response,
+    ) => Promise<void>,
+  ): express.RequestHandler {
+    return async (request, response) => {
+      if (!(await authorizeAdmin(request, response))) {
+        return;
+      }
+      try {
+        await handler(request, response);
+      } catch (error) {
+        if (error instanceof ShowtimeConflictError) {
+          const format = (date: Date) =>
+            new Intl.DateTimeFormat('fr-FR', {
+              dateStyle: 'short',
+              timeStyle: 'short',
+              timeZone: 'Europe/Paris',
+            }).format(date);
+          response.status(409).json({
+            error: 'SHOWTIME_CONFLICT',
+            message: `Cette salle est déjà occupée par « ${error.conflict.movieTitle} » de ${format(error.conflict.startTime)} à ${format(error.conflict.endTime)}.`,
+          });
+          return;
+        }
+        if (error instanceof AdminNotFoundError) {
+          response.status(404).json({
+            error: 'NOT_FOUND',
+            message: 'Élément introuvable.',
+          });
+          return;
+        }
+        if (error instanceof AdminRuleError) {
+          const messages = {
+            PAST_START: 'La séance doit commencer dans le futur.',
+            SHOWTIME_CANCELLED: 'Cette séance est annulée et non modifiable.',
+            MOVIE_HAS_SHOWTIMES:
+              'Ce film a des séances : annulez-les ou conservez le film.',
+          } as const;
+          response.status(error.reason === 'PAST_START' ? 400 : 409).json({
+            error: error.reason,
+            message: messages[error.reason],
+          });
+          return;
+        }
+        console.error('Admin request failed.', error);
+        response.status(500).json({
+          error: 'ADMIN_UNAVAILABLE',
+          message: 'L’espace administrateur est momentanément indisponible.',
+        });
+      }
+    };
+  }
+
+  function invalid(response: express.Response) {
+    response.status(400).json({
+      error: 'INVALID_ADMIN_REQUEST',
+      message: 'Les informations saisies sont invalides.',
+    });
+  }
+
+  app.get(
+    '/api/admin/me',
+    adminRoute(async (_request, response) => {
+      response.json({ role: 'ADMIN' });
+    }),
+  );
+  app.get(
+    '/api/admin/showtimes',
+    adminRoute(async (_request, response) => {
+      response.json({ showtimes: await adminService.listShowtimes() });
+    }),
+  );
+  app.get(
+    '/api/admin/rooms',
+    adminRoute(async (_request, response) => {
+      response.json({ rooms: await adminService.listRooms() });
+    }),
+  );
+  app.get(
+    '/api/admin/movies',
+    adminRoute(async (_request, response) => {
+      response.json({ movies: await adminService.listMovies() });
+    }),
+  );
+  app.post(
+    '/api/admin/showtimes',
+    adminRoute(async (request, response) => {
+      const body = adminShowtimeCreateSchema.safeParse(request.body);
+      if (!body.success) {
+        invalid(response);
+        return;
+      }
+      const showtime = await adminService.createShowtime({
+        ...body.data,
+        startTime: new Date(body.data.startTime),
+      });
+      response.status(201).json({ showtime });
+    }),
+  );
+  app.patch(
+    '/api/admin/showtimes/:showtimeId',
+    adminRoute(async (request, response) => {
+      const id = showtimeIdSchema.safeParse(request.params.showtimeId);
+      const body = adminShowtimeUpdateSchema.safeParse(request.body);
+      if (!id.success || !body.success) {
+        invalid(response);
+        return;
+      }
+      response.json({
+        showtime: await adminService.updateShowtimePrice(
+          id.data,
+          body.data.price,
+        ),
+      });
+    }),
+  );
+  app.post(
+    '/api/admin/showtimes/:showtimeId/cancel',
+    adminRoute(async (request, response) => {
+      const id = showtimeIdSchema.safeParse(request.params.showtimeId);
+      if (!id.success) {
+        invalid(response);
+        return;
+      }
+      response.json(await adminService.cancelShowtime(id.data));
+    }),
+  );
+  app.post(
+    '/api/admin/movies',
+    adminRoute(async (request, response) => {
+      const body = adminMovieSchema.safeParse(request.body);
+      if (!body.success) {
+        invalid(response);
+        return;
+      }
+      response
+        .status(201)
+        .json({ movie: await adminService.createMovie(body.data) });
+    }),
+  );
+  app.put(
+    '/api/admin/movies/:movieId',
+    adminRoute(async (request, response) => {
+      const id = showtimeIdSchema.safeParse(request.params.movieId);
+      const body = adminMovieSchema.safeParse(request.body);
+      if (!id.success || !body.success) {
+        invalid(response);
+        return;
+      }
+      response.json({
+        movie: await adminService.updateMovie(id.data, body.data),
+      });
+    }),
+  );
+  app.delete(
+    '/api/admin/movies/:movieId',
+    adminRoute(async (request, response) => {
+      const id = showtimeIdSchema.safeParse(request.params.movieId);
+      if (!id.success) {
+        invalid(response);
+        return;
+      }
+      await adminService.deleteMovie(id.data);
+      response.status(204).end();
+    }),
+  );
   app.get('/api/openapi.json', (_request, response) => {
     response.json(openApiDocument);
   });
