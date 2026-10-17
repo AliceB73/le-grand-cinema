@@ -61,6 +61,19 @@ const checkoutStatusSchema = z.object({
   status: z.enum(['pending', 'confirmed', 'cancelled', 'refund_required']),
 });
 
+const customerBookingSchema = z.object({
+  id: z.string().uuid(),
+  movieTitle: z.string(),
+  roomName: z.string(),
+  startTime: z.string().datetime(),
+  seats: z.array(
+    z.object({ rowNumber: z.string(), seatNumber: z.number().int() }),
+  ),
+  seatCount: z.number().int(),
+  used: z.boolean(),
+  isUpcoming: z.boolean(),
+});
+
 registry.registerPath({
   method: 'post',
   path: '/api/showtimes/{showtimeId}/checkout',
@@ -157,6 +170,59 @@ registry.registerPath({
     403: { description: 'Rôle administrateur requis' },
     404: { description: 'Billet inconnu ou non confirmé' },
     409: { description: 'Billet déjà utilisé' },
+    503: { description: 'Service d’authentification indisponible' },
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/api/me/bookings',
+  summary: 'Lister les réservations confirmées du spectateur connecté',
+  description:
+    'Réservé aux comptes de rôle spectateur. Les réservations sont rattachées par e-mail ; les séances à venir précèdent les séances passées.',
+  request: {
+    headers: z.object({ authorization: z.string().startsWith('Bearer ') }),
+  },
+  responses: {
+    200: {
+      description: 'Réservations confirmées du compte',
+      content: {
+        'application/json': {
+          schema: z.object({ bookings: z.array(customerBookingSchema) }),
+        },
+      },
+    },
+    401: { description: 'Authentification requise ou invalide' },
+    403: { description: 'Compte non spectateur' },
+    503: { description: 'Service d’authentification indisponible' },
+  },
+});
+
+registry.registerPath({
+  method: 'get',
+  path: '/api/me/bookings/{bookingId}/ticket',
+  summary: 'Consulter le QR code d’un e-billet',
+  description:
+    'Retourne le QR code (image PNG en data URL) uniquement au propriétaire de la réservation confirmée.',
+  request: {
+    params: z.object({ bookingId: z.string().uuid() }),
+    headers: z.object({ authorization: z.string().startsWith('Bearer ') }),
+  },
+  responses: {
+    200: {
+      description: 'QR code du billet',
+      content: {
+        'application/json': {
+          schema: z.object({
+            qrCodeDataUrl: z.string(),
+            used: z.boolean(),
+          }),
+        },
+      },
+    },
+    401: { description: 'Authentification requise ou invalide' },
+    403: { description: 'Compte non spectateur' },
+    404: { description: 'Billet introuvable' },
     503: { description: 'Service d’authentification indisponible' },
   },
 });

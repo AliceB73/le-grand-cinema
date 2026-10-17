@@ -25,7 +25,7 @@ describe('SignInPage', () => {
     render(
       <MemoryRouter initialEntries={['/connexion']}>
         <Routes>
-          <Route path="/" element={<p>Accueil</p>} />
+          <Route path="/mon-espace" element={<p>Accueil</p>} />
           <Route path="/connexion" element={<SignInPage />} />
         </Routes>
       </MemoryRouter>,

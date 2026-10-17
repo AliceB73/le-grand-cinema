@@ -15,6 +15,15 @@ import {
   type AdminAuthenticator,
 } from './auth/admin-auth.js';
 import {
+  CustomerAuthenticationError,
+  createCustomerAuthenticator,
+  type CustomerAuthenticator,
+} from './auth/customer-auth.js';
+import {
+  createCustomerTicketService,
+  type CustomerTicketService,
+} from './tickets/customer-ticket.service.js';
+import {
   createTicketService,
   type TicketService,
 } from './tickets/ticket.service.js';
@@ -101,6 +110,8 @@ export function createApp(
   paymentService: PaymentService = createPaymentService(),
   ticketService: TicketService = createTicketService(),
   adminAuthenticator: AdminAuthenticator = createAdminAuthenticator(),
+  customerAuthenticator: CustomerAuthenticator = createCustomerAuthenticator(),
+  customerTicketService: CustomerTicketService = createCustomerTicketService(),
 ) {
   const app = express();
 
@@ -447,6 +458,93 @@ export function createApp(
       }
     },
   );
+  async function authorizeCustomer(
+    request: express.Request,
+    response: express.Response,
+  ) {
+    try {
+      return await customerAuthenticator.authorize(
+        request.get('authorization'),
+      );
+    } catch (error) {
+      if (error instanceof CustomerAuthenticationError) {
+        if (error.reason === 'unavailable') {
+          console.error('Customer authentication is unavailable.');
+          response.status(503).json({
+            error: 'AUTHENTICATION_UNAVAILABLE',
+            message: 'L’espace client est momentanément indisponible.',
+          });
+          return null;
+        }
+        const forbidden = error.reason === 'forbidden';
+        response.status(forbidden ? 403 : 401).json({
+          error: forbidden ? 'CUSTOMER_REQUIRED' : 'AUTHENTICATION_REQUIRED',
+          message: forbidden
+            ? 'L’espace client est réservé aux comptes spectateurs.'
+            : 'Une authentification est nécessaire.',
+        });
+        return null;
+      }
+      console.error('Customer authorization failed.', error);
+      response.status(500).json({
+        error: 'AUTHORIZATION_UNAVAILABLE',
+        message: 'L’espace client est momentanément indisponible.',
+      });
+      return null;
+    }
+  }
+  app.get('/api/me/bookings', async (request, response) => {
+    const customer = await authorizeCustomer(request, response);
+    if (!customer) {
+      return;
+    }
+    try {
+      response.json({
+        bookings: await customerTicketService.listBookings(customer.email),
+      });
+    } catch (error) {
+      console.error('Failed to list customer bookings.', error);
+      response.status(500).json({
+        error: 'BOOKINGS_UNAVAILABLE',
+        message: 'Vos réservations sont momentanément indisponibles.',
+      });
+    }
+  });
+  app.get('/api/me/bookings/:bookingId/ticket', async (request, response) => {
+    const customer = await authorizeCustomer(request, response);
+    if (!customer) {
+      return;
+    }
+    const bookingId = z.string().uuid().safeParse(request.params.bookingId);
+    if (!bookingId.success) {
+      response.status(404).json({
+        error: 'TICKET_NOT_FOUND',
+        message: 'Ce billet est introuvable.',
+      });
+      return;
+    }
+    try {
+      const ticket = await customerTicketService.getTicketQr(
+        customer.email,
+        bookingId.data,
+      );
+      if (!ticket) {
+        response.status(404).json({
+          error: 'TICKET_NOT_FOUND',
+          message: 'Ce billet est introuvable.',
+        });
+        return;
+      }
+      response.set('Cache-Control', 'no-store');
+      response.json(ticket);
+    } catch (error) {
+      console.error('Failed to render a customer ticket.', error);
+      response.status(500).json({
+        error: 'TICKET_UNAVAILABLE',
+        message: 'Votre billet est momentanément indisponible.',
+      });
+    }
+  });
   app.get('/api/openapi.json', (_request, response) => {
     response.json(openApiDocument);
   });

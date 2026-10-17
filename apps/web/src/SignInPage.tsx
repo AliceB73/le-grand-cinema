@@ -41,7 +41,7 @@ export default function SignInPage() {
       return;
     }
 
-    void navigate('/');
+    void navigate('/mon-espace');
   }
 
   return (
