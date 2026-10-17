@@ -28,7 +28,7 @@ function mockFetch(status: number, body: unknown) {
     status,
     json: async () => body,
   }));
-  global.fetch = fetchMock as unknown as typeof fetch;
+  globalThis.fetch = fetchMock as unknown as typeof fetch;
   return fetchMock;
 }
 
