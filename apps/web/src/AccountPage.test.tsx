@@ -62,17 +62,15 @@ describe('AccountPage', () => {
 
   it('lists upcoming and past bookings with the used badge', async () => {
     signIn();
-    jest
-      .mocked(api.getMyBookings)
-      .mockResolvedValue([
-        booking(),
-        booking({
-          id: 'b2',
-          movieTitle: 'Film B',
-          isUpcoming: false,
-          used: true,
-        }),
-      ]);
+    jest.mocked(api.getMyBookings).mockResolvedValue([
+      booking(),
+      booking({
+        id: 'b2',
+        movieTitle: 'Film B',
+        isUpcoming: false,
+        used: true,
+      }),
+    ]);
 
     renderPage();
 
