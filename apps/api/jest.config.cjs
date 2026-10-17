@@ -5,11 +5,13 @@ module.exports = {
   collectCoverageFrom: [
     '<rootDir>/src/app.ts',
     '<rootDir>/src/docs/openapi.ts',
+    '<rootDir>/src/admin/**/*.ts',
     '<rootDir>/src/auth/**/*.ts',
     '<rootDir>/src/payments/**/*.ts',
     '<rootDir>/src/programme/**/*.ts',
     '<rootDir>/src/seats/**/*.ts',
     '<rootDir>/src/tickets/**/*.ts',
+    '!<rootDir>/src/admin/**/*.test.ts',
     '!<rootDir>/src/auth/**/*.test.ts',
     '!<rootDir>/src/payments/**/*.test.ts',
     '!<rootDir>/src/programme/**/*.test.ts',

@@ -21,6 +21,7 @@ jest.mock('./admin-api', () => ({
   listRooms: jest.fn(),
   createShowtime: jest.fn(),
   cancelShowtime: jest.fn(),
+  updateShowtimePrice: jest.fn(),
 }));
 
 function signIn() {
@@ -133,6 +134,137 @@ describe('admin area', () => {
         'Cette salle est déjà occupée par « X ».',
       ),
     );
+  });
+
+  function arrange(showtimes: api.AdminShowtime[]) {
+    signIn();
+    jest.mocked(api.checkAdminAccess).mockResolvedValue(undefined);
+    jest.mocked(api.listShowtimes).mockResolvedValue(showtimes);
+    jest.mocked(api.listMovies).mockResolvedValue([
+      {
+        id: 'm1',
+        title: 'Film A',
+        genre: 'DRAME',
+        description: 'd',
+        duration: 108,
+        posterUrl: null,
+      },
+    ]);
+    jest
+      .mocked(api.listRooms)
+      .mockResolvedValue([
+        { name: 'Salle A', category: 'STANDARD', capacity: 180 },
+      ]);
+  }
+
+  it('shows an error when showtimes cannot be loaded', async () => {
+    arrange([]);
+    jest.mocked(api.listShowtimes).mockRejectedValue(new Error('boom'));
+    renderAdmin();
+    expect(
+      await screen.findByText('Impossible de charger les séances.'),
+    ).toBeTruthy();
+  });
+
+  it('validates the creation form before calling the API', async () => {
+    arrange([]);
+    renderAdmin();
+    await screen.findByRole('button', { name: 'Créer la séance' });
+    fireEvent.click(screen.getByRole('button', { name: 'Créer la séance' }));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Renseignez le film',
+    );
+    expect(api.createShowtime).not.toHaveBeenCalled();
+  });
+
+  it('creates a showtime', async () => {
+    arrange([]);
+    jest.mocked(api.createShowtime).mockResolvedValue(showtime());
+    renderAdmin();
+    await screen.findByText('Aucune séance programmée.');
+    fireEvent.change(screen.getByLabelText('Film'), {
+      target: { value: 'm1' },
+    });
+    fireEvent.change(screen.getByLabelText('Salle'), {
+      target: { value: 'Salle A' },
+    });
+    fireEvent.change(screen.getByLabelText('Date et horaire'), {
+      target: { value: '2027-02-01T18:00' },
+    });
+    fireEvent.change(screen.getByLabelText('Prix plein tarif (€)'), {
+      target: { value: '10' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Créer la séance' }));
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe('Séance créée.'),
+    );
+    expect(api.createShowtime).toHaveBeenCalledWith(
+      expect.objectContaining({ movieId: 'm1', roomId: 'Salle A', price: 10 }),
+    );
+  });
+
+  it('updates the price of a showtime', async () => {
+    arrange([showtime()]);
+    jest.mocked(api.updateShowtimePrice).mockResolvedValue(showtime());
+    renderAdmin();
+    const input = await screen.findByLabelText(/Prix en euros pour Film A/);
+    fireEvent.change(input, { target: { value: '12,5' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }));
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe('Prix mis à jour.'),
+    );
+    expect(api.updateShowtimePrice).toHaveBeenCalledWith('s1', 12.5);
+  });
+
+  it('rejects an invalid price and reports API failures', async () => {
+    arrange([showtime()]);
+    jest
+      .mocked(api.updateShowtimePrice)
+      .mockRejectedValue(new api.AdminApiError(409, 'Séance annulée.'));
+    renderAdmin();
+    const input = await screen.findByLabelText(/Prix en euros pour Film A/);
+    fireEvent.change(input, { target: { value: '-3' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }));
+    expect((await screen.findByRole('alert')).textContent).toBe(
+      'Le prix doit être un nombre positif.',
+    );
+    expect(api.updateShowtimePrice).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: '11' } });
+    fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe('Séance annulée.'),
+    );
+  });
+
+  it('does not cancel when the confirmation is declined', async () => {
+    arrange([showtime()]);
+    jest.spyOn(window, 'confirm').mockReturnValue(false);
+    renderAdmin();
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Annuler la séance Film A/ }),
+    );
+    expect(api.cancelShowtime).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed cancellation', async () => {
+    arrange([showtime({ confirmedBookings: 0 })]);
+    jest
+      .mocked(api.cancelShowtime)
+      .mockRejectedValue(new api.AdminApiError(500, null));
+    jest.spyOn(window, 'confirm').mockReturnValue(true);
+    renderAdmin();
+    fireEvent.click(
+      await screen.findByRole('button', { name: /Annuler la séance Film A/ }),
+    );
+    expect((await screen.findByRole('alert')).textContent).toContain('échoué');
+  });
+
+  it('marks cancelled showtimes as read-only', async () => {
+    arrange([showtime({ status: 'CANCELLED' })]);
+    renderAdmin();
+    expect(await screen.findByText('Annulée')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Enregistrer/ })).toBeNull();
   });
 
   it('cancels a showtime after confirmation', async () => {

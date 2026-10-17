@@ -6,6 +6,7 @@ import {
   type AdminAuthenticator,
 } from '../auth/admin-auth.js';
 import {
+  AdminNotFoundError,
   AdminRuleError,
   ShowtimeConflictError,
   type AdminService,
@@ -147,5 +148,98 @@ describe('admin routes', () => {
     authorize.mockResolvedValue(undefined);
     const response = await request(app).delete('/api/admin/movies/m1');
     expect(response.status).toBe(409);
+  });
+
+  it('deletes a movie, lists rooms and movies', async () => {
+    const { app, authorize } = buildApp();
+    authorize.mockResolvedValue(undefined);
+    expect((await request(app).delete('/api/admin/movies/m1')).status).toBe(
+      204,
+    );
+    expect((await request(app).get('/api/admin/rooms')).body).toEqual({
+      rooms: [],
+    });
+    expect((await request(app).get('/api/admin/movies')).body).toEqual({
+      movies: [],
+    });
+  });
+
+  it('creates and updates movies', async () => {
+    const movie = {
+      title: 'Film',
+      genre: 'DRAME',
+      description: 'd',
+      duration: 100,
+    };
+    const createMovie = mockFn(async () => ({ id: 'm1', ...movie }));
+    const updateMovie = mockFn(async () => ({ id: 'm1', ...movie }));
+    const { app, authorize } = buildApp({ createMovie, updateMovie });
+    authorize.mockResolvedValue(undefined);
+    expect(
+      (await request(app).post('/api/admin/movies').send(movie)).status,
+    ).toBe(201);
+    expect(
+      (await request(app).put('/api/admin/movies/m1').send(movie)).status,
+    ).toBe(200);
+    expect(
+      (await request(app).post('/api/admin/movies').send({ title: '' })).status,
+    ).toBe(400);
+    expect(
+      (await request(app).put('/api/admin/movies/m1').send({})).status,
+    ).toBe(400);
+  });
+
+  it('rejects invalid price updates', async () => {
+    const { app, authorize } = buildApp();
+    authorize.mockResolvedValue(undefined);
+    const response = await request(app)
+      .patch('/api/admin/showtimes/s1')
+      .send({ price: -1 });
+    expect(response.status).toBe(400);
+  });
+
+  it('maps missing items to 404 and a past start to 400', async () => {
+    const cancelShowtime = mockFn(async () => {
+      throw new AdminNotFoundError('showtime');
+    });
+    const createShowtime = mockFn(async () => {
+      throw new AdminRuleError('PAST_START');
+    });
+    const { app, authorize } = buildApp({ cancelShowtime, createShowtime });
+    authorize.mockResolvedValue(undefined);
+    expect(
+      (await request(app).post('/api/admin/showtimes/s1/cancel')).status,
+    ).toBe(404);
+    const past = await request(app).post('/api/admin/showtimes').send({
+      movieId: 'm1',
+      roomId: 'Salle A',
+      startTime: '2027-01-01T18:00:00.000Z',
+      price: 9.5,
+    });
+    expect(past.status).toBe(400);
+  });
+
+  it('hides unexpected failures behind a generic 500', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const listShowtimes = mockFn(async () => {
+      throw new Error('db down');
+    });
+    const { app, authorize } = buildApp({ listShowtimes });
+    authorize.mockResolvedValue(undefined);
+    const response = await request(app).get('/api/admin/showtimes');
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('ADMIN_UNAVAILABLE');
+    expect(JSON.stringify(response.body)).not.toContain('db down');
+  });
+
+  it('reports unavailable or failing authentication', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const { app, authorize } = buildApp();
+    authorize.mockRejectedValueOnce(
+      new AdminAuthenticationError('unavailable'),
+    );
+    expect((await request(app).get('/api/admin/me')).status).toBe(503);
+    authorize.mockRejectedValueOnce(new Error('boom'));
+    expect((await request(app).get('/api/admin/me')).status).toBe(500);
   });
 });

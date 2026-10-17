@@ -22,6 +22,10 @@ const config: Config = {
     '<rootDir>/src/AppLayout.tsx',
     '<rootDir>/src/AccountPage.tsx',
     '<rootDir>/src/my-bookings-api.ts',
+    '<rootDir>/src/admin-api.ts',
+    '<rootDir>/src/AdminLayout.tsx',
+    '<rootDir>/src/AdminShowtimesPage.tsx',
+    '<rootDir>/src/AdminMoviesPage.tsx',
   ],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   transform: {
