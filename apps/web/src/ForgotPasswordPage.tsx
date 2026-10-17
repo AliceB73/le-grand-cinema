@@ -55,7 +55,10 @@ export default function ForgotPasswordPage() {
         Saisissez votre adresse e-mail. Un lien à usage unique, valable une
         heure, vous sera envoyé si un compte existe.
       </p>
-      <form className="space-y-5" onSubmit={(event) => void handleSubmit(event)}>
+      <form
+        className="space-y-5"
+        onSubmit={(event) => void handleSubmit(event)}
+      >
         <div>
           <label className="font-semibold" htmlFor="reset-email">
             Adresse e-mail

@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { PASSWORD_RULES_TEXT } from './password-policy';
 import SignUpPage from './SignUpPage';
@@ -84,7 +90,9 @@ describe('SignUpPage', () => {
     fireEvent.submit(screen.getByRole('button', { name: 'S’inscrire' }));
 
     expect(
-      await screen.findByText('Un compte existe déjà avec cette adresse e-mail.'),
+      await screen.findByText(
+        'Un compte existe déjà avec cette adresse e-mail.',
+      ),
     ).toBeTruthy();
   });
 });

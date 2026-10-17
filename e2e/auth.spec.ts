@@ -5,7 +5,10 @@ const spectator = {
   password: 'motdepasse12',
 };
 
-function json(route: { fulfill: (response: object) => Promise<void> }, body: unknown) {
+function json(
+  route: { fulfill: (response: object) => Promise<void> },
+  body: unknown,
+) {
   return route.fulfill({
     status: 200,
     contentType: 'application/json',

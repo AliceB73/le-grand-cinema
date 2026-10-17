@@ -16,10 +16,12 @@ describe('auth messages', () => {
     expect(
       getSignUpErrorMessage('Password should be at least 12 characters'),
     ).toBe(PASSWORD_RULES_TEXT);
-    expect(getSignUpErrorMessage('Unable to validate email address: invalid')).toContain(
-      'adresse e-mail valide',
+    expect(
+      getSignUpErrorMessage('Unable to validate email address: invalid'),
+    ).toContain('adresse e-mail valide');
+    expect(getSignUpErrorMessage('unexpected')).toContain(
+      'inscription a échoué',
     );
-    expect(getSignUpErrorMessage('unexpected')).toContain('inscription a échoué');
   });
 
   it('maps invalid login credentials', () => {
@@ -35,9 +37,7 @@ describe('auth messages', () => {
         'Password should be at least 12 characters',
       ),
     ).toContain('12 caractères');
-    expect(getPasswordUpdateErrorMessage('expired')).toContain(
-      'nouveau lien',
-    );
+    expect(getPasswordUpdateErrorMessage('expired')).toContain('nouveau lien');
     expect(getResetRequestErrorMessage()).toBe(AUTH_UNAVAILABLE_MESSAGE);
   });
 });

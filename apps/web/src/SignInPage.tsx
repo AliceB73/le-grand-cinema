@@ -50,7 +50,10 @@ export default function SignInPage() {
       <p className="text-slate-300">
         Connectez-vous avec l’adresse e-mail de votre compte.
       </p>
-      <form className="space-y-5" onSubmit={(event) => void handleSubmit(event)}>
+      <form
+        className="space-y-5"
+        onSubmit={(event) => void handleSubmit(event)}
+      >
         <div>
           <label className="font-semibold" htmlFor="signin-email">
             Adresse e-mail

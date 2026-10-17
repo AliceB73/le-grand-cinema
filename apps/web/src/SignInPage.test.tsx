@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import SignInPage from './SignInPage';
 import { supabase } from './supabase-client';

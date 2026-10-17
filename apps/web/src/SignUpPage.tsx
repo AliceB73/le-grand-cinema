@@ -61,7 +61,10 @@ export default function SignUpPage() {
         Inscrivez-vous pour vous reconnecter plus tard. La réservation sans
         compte reste possible.
       </p>
-      <form className="space-y-5" onSubmit={(event) => void handleSubmit(event)}>
+      <form
+        className="space-y-5"
+        onSubmit={(event) => void handleSubmit(event)}
+      >
         <div>
           <label className="font-semibold" htmlFor="signup-email">
             Adresse e-mail
