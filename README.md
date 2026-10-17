@@ -34,7 +34,7 @@ npm.cmd run supabase:start
 npm.cmd run supabase:status
 ```
 
-Copiez la clé `anon` affichée par `supabase status` dans `.env` à la place de `SUPABASE_ANON_KEY`. Les variables `.env` ne doivent jamais être commitées.
+Copiez la clé `anon` affichée par `supabase status` dans `.env` à la place de `SUPABASE_ANON_KEY` et de `VITE_SUPABASE_ANON_KEY`. Les variables `.env` ne doivent jamais être commitées. Après une modification de `supabase/config.toml` (longueur minimale du mot de passe, URL de redirection), arrêtez puis redémarrez Supabase pour recharger Auth. Les courriels d’authentification locaux (réinitialisation de mot de passe) sont envoyés par Supabase Auth via le SMTP Resend (`[auth.email.smtp]`, port 2587) vers la vraie adresse du spectateur ; `RESEND_API_KEY` et `EMAIL_FROM` (domaine vérifié dans Resend) doivent être présents dans `.env` avant `supabase:start`. Si un antivirus analyse le trafic SMTP (ex. Avast Mail Shield), le port 465 échoue avec `x509: certificate signed by unknown authority` : gardez le port 2587. La migration Prisma `sync_auth_users` crée le trigger qui recopie un compte Auth vers `public.User`.
 
 ### Stripe Checkout en mode test
 
@@ -72,9 +72,11 @@ npm.cmd run dev
 ```
 
 - Interface React : <http://localhost:5173>
+- Inscription / connexion : <http://localhost:5173/inscription> et <http://localhost:5173/connexion>
 - API : <http://localhost:3000/api/health>
 - Swagger UI : <http://localhost:3000/api/docs>
 - Supabase Studio : <http://localhost:54323>
+- Mailpit (courriels Auth interceptés si le SMTP Resend est désactivé) : <http://127.0.0.1:54324>
 
 Docker Compose démarre le front et l’API. Supabase CLI démarre séparément ses services dans Docker ; l’API les joint via `host.docker.internal`.
 

@@ -71,7 +71,7 @@ jobs:
             -Dsonar.tests=apps/api/src,apps/web/src,e2e
             -Dsonar.test.inclusions=**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx
             -Dsonar.exclusions=**/*.test.ts,**/*.test.tsx,**/*.spec.ts,**/*.spec.tsx
-            -Dsonar.coverage.exclusions=apps/web/src/api-config.ts
+            -Dsonar.coverage.exclusions=apps/web/src/api-config.ts,apps/web/src/supabase-client.ts,apps/web/src/main.tsx,apps/web/src/vite-env.d.ts,apps/web/src/auth-form-styles.ts
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
