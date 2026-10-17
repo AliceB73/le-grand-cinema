@@ -45,6 +45,19 @@ describe('my-bookings-api', () => {
     ).rejects.toBeTruthy();
   });
 
+  it('uses the global fetch by default', async () => {
+    const original = globalThis.fetch;
+    const globalFetch = reply(200, { bookings: [] });
+    globalThis.fetch = globalFetch as unknown as typeof fetch;
+    try {
+      await expect(getMyBookings('tok')).resolves.toEqual([]);
+      await expect(getMyTicket('b1', 'tok')).rejects.toBeTruthy();
+      expect(globalFetch).toHaveBeenCalledTimes(2);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+
   it('throws CustomerApiError with the status on failure', async () => {
     await expect(getMyBookings('tok', reply(403, {}))).rejects.toMatchObject({
       status: 403,

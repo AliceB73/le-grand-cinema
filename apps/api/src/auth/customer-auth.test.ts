@@ -1,6 +1,7 @@
 import { Role } from '@prisma/client';
 import { describe, expect, it, jest } from '@jest/globals';
 import { createCustomerAuthenticator } from './customer-auth.js';
+import { prisma } from '../data/prisma.js';
 
 function build(
   role: Role | null,
@@ -33,6 +34,83 @@ describe('customer authenticator', () => {
     );
     await expect(build(null).authorize('Bearer t')).rejects.toMatchObject({
       reason: 'forbidden',
+    });
+  });
+
+  it('rejects malformed profiles and role lookup failures', async () => {
+    for (const [body, reason] of [
+      ['not-json', 'unavailable'],
+      [JSON.stringify({ email: '' }), 'invalid'],
+      [JSON.stringify(null), 'invalid'],
+    ] as const) {
+      const authenticator = build(
+        Role.USER,
+        jest.fn<typeof fetch>().mockResolvedValue(new Response(body)),
+      );
+      await expect(authenticator.authorize('Bearer t')).rejects.toMatchObject({
+        reason,
+      });
+    }
+    const failingLookup = createCustomerAuthenticator({
+      supabaseUrl: 'https://example.supabase.co',
+      supabaseAnonKey: 'anon-key',
+      fetcher: jest
+        .fn<typeof fetch>()
+        .mockResolvedValue(
+          new Response(JSON.stringify({ email: 'a@example.com' })),
+        ),
+      findRoleByEmail: jest
+        .fn<(email: string) => Promise<Role | null>>()
+        .mockRejectedValue(new Error('db down')),
+    });
+    await expect(failingLookup.authorize('Bearer t')).rejects.toMatchObject({
+      reason: 'unavailable',
+    });
+  });
+
+  it('reports missing configuration and upstream errors as unavailable', async () => {
+    const unconfigured = createCustomerAuthenticator({
+      supabaseUrl: '',
+      supabaseAnonKey: '',
+    });
+    await expect(unconfigured.authorize('Bearer t')).rejects.toMatchObject({
+      reason: 'unavailable',
+    });
+    const upstream = build(
+      Role.USER,
+      jest
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status: 503 })),
+    );
+    await expect(upstream.authorize('Bearer t')).rejects.toMatchObject({
+      reason: 'unavailable',
+    });
+  });
+
+  it('looks the role up in the database by default', async () => {
+    const findUnique = jest
+      .spyOn(prisma.user, 'findUnique')
+      .mockResolvedValueOnce({ role: Role.USER } as never)
+      .mockResolvedValueOnce(null);
+    const authenticator = createCustomerAuthenticator({
+      supabaseUrl: 'https://example.supabase.co',
+      supabaseAnonKey: 'anon-key',
+      fetcher: jest
+        .fn<typeof fetch>()
+        .mockImplementation(
+          async () => new Response(JSON.stringify({ email: 'A@example.com' })),
+        ),
+    });
+
+    await expect(authenticator.authorize('Bearer t')).resolves.toEqual({
+      email: 'a@example.com',
+    });
+    await expect(authenticator.authorize('Bearer t')).rejects.toMatchObject({
+      reason: 'forbidden',
+    });
+    expect(findUnique).toHaveBeenCalledWith({
+      where: { email: 'a@example.com' },
+      select: { role: true },
     });
   });
 

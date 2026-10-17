@@ -92,4 +92,51 @@ describe('customer booking routes', () => {
     expect(malformed.status).toBe(404);
     expect(foreign.status).toBe(404);
   });
+
+  it('reports unexpected authorization and service failures', async () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const unexpected = buildApp(
+      jest
+        .fn<CustomerAuthenticator['authorize']>()
+        .mockRejectedValue(new Error('boom')),
+    );
+    expect((await request(unexpected.app).get('/api/me/bookings')).status).toBe(
+      500,
+    );
+
+    const failing = buildApp(
+      jest
+        .fn<CustomerAuthenticator['authorize']>()
+        .mockResolvedValue({ email: 'alice@example.com' }),
+    );
+    failing.service.listBookings.mockRejectedValue(new Error('db'));
+    failing.service.getTicketQr.mockRejectedValue(new Error('qr'));
+    const list = await request(failing.app).get('/api/me/bookings');
+    const ticket = await request(failing.app).get(
+      `/api/me/bookings/${bookingId}/ticket`,
+    );
+
+    expect(list.status).toBe(500);
+    expect(list.body.error).toBe('BOOKINGS_UNAVAILABLE');
+    expect(ticket.status).toBe(500);
+    expect(ticket.body.error).toBe('TICKET_UNAVAILABLE');
+    consoleError.mockRestore();
+  });
+
+  it('does not render a ticket for an unauthenticated request', async () => {
+    const { app, service } = buildApp(
+      jest
+        .fn<CustomerAuthenticator['authorize']>()
+        .mockRejectedValue(new CustomerAuthenticationError('missing')),
+    );
+
+    const response = await request(app).get(
+      `/api/me/bookings/${bookingId}/ticket`,
+    );
+
+    expect(response.status).toBe(401);
+    expect(service.getTicketQr).not.toHaveBeenCalled();
+  });
 });

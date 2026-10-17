@@ -99,6 +99,54 @@ describe('AccountPage', () => {
     expect(api.getMyTicket).toHaveBeenCalledWith('b1', 'tok');
   });
 
+  it('hides the QR code again and reports ticket errors', async () => {
+    signIn();
+    jest.mocked(api.getMyBookings).mockResolvedValue([booking()]);
+    jest
+      .mocked(api.getMyTicket)
+      .mockRejectedValueOnce(new api.CustomerApiError(500))
+      .mockResolvedValueOnce({
+        qrCodeDataUrl: 'data:image/png;base64,AAA',
+        used: false,
+      });
+
+    renderPage();
+    const button = await screen.findByRole('button', {
+      name: /Afficher le billet/,
+    });
+    fireEvent.click(button);
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'billet est momentanément indisponible',
+    );
+
+    fireEvent.click(button);
+    await screen.findByAltText(/QR code du billet/);
+    fireEvent.click(screen.getByRole('button', { name: /Masquer le billet/ }));
+    expect(screen.queryByAltText(/QR code du billet/)).toBeNull();
+  });
+
+  it('pluralises seats and reports a generic load error', async () => {
+    signIn();
+    jest.mocked(api.getMyBookings).mockResolvedValueOnce([
+      booking({
+        seatCount: 2,
+        seats: [
+          { rowNumber: 'A', seatNumber: 1 },
+          { rowNumber: 'A', seatNumber: 2 },
+        ],
+      }),
+    ]);
+    renderPage();
+    expect(await screen.findByText(/2 places : A1, A2/)).toBeTruthy();
+    cleanup();
+
+    jest.mocked(api.getMyBookings).mockRejectedValueOnce(new Error('offline'));
+    renderPage();
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'momentanément indisponibles',
+    );
+  });
+
   it('shows an empty state and explicit errors', async () => {
     signIn();
     jest.mocked(api.getMyBookings).mockResolvedValueOnce([]);

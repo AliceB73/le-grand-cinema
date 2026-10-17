@@ -20,6 +20,8 @@ const config: Config = {
     '<rootDir>/src/ForgotPasswordPage.tsx',
     '<rootDir>/src/ResetPasswordPage.tsx',
     '<rootDir>/src/AppLayout.tsx',
+    '<rootDir>/src/AccountPage.tsx',
+    '<rootDir>/src/my-bookings-api.ts',
   ],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   transform: {
