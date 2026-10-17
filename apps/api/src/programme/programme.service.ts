@@ -27,6 +27,7 @@ const prismaProgrammeRepository: ProgrammeRepository = {
   findUpcomingShowtimes: (from, until) =>
     prisma.showtime.findMany({
       where: {
+        status: 'SCHEDULED',
         startTime: {
           gte: from,
           lt: until,

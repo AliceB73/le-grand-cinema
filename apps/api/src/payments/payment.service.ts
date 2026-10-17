@@ -80,7 +80,7 @@ export interface PaymentGateway {
 export const prismaPaymentRepository: PaymentRepository = {
   getCheckoutData: async (showtimeId, seatIds) => {
     const showtime = await prisma.showtime.findUnique({
-      where: { id: showtimeId },
+      where: { id: showtimeId, status: 'SCHEDULED' },
       select: {
         price: true,
         movie: { select: { title: true } },

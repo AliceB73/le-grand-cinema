@@ -27,6 +27,16 @@ enum EmailDeliveryStatus {
   FAILED
 }
 
+enum EmailDeliveryKind {
+  TICKET
+  SHOWTIME_CANCELLED
+}
+
+enum ShowtimeStatus {
+  SCHEDULED
+  CANCELLED
+}
+
 enum Genre {
   ACTION
   ANIMATION
@@ -84,6 +94,8 @@ model Showtime {
   room      Room      @relation(fields: [roomId], references: [name], onDelete: Restrict)
   startTime DateTime
   price     Float
+  status    ShowtimeStatus @default(SCHEDULED)
+  cancelledAt DateTime?
   bookings  Booking[]
   seats     Seat[]
   createdAt DateTime  @default(now())
@@ -104,7 +116,7 @@ model Booking {
   totalAmountCents        Int?
   ticketTokenHash         String?             @unique
   checkedInAt             DateTime?
-  emailDelivery            EmailDelivery?
+  emailDeliveries         EmailDelivery[]
   seats                   Seat[]
   createdAt               DateTime      @default(now())
   updatedAt               DateTime      @updatedAt
@@ -112,8 +124,9 @@ model Booking {
 
 model EmailDelivery {
   id            String              @id @default(uuid())
-  bookingId     String              @unique
+  bookingId     String
   booking       Booking             @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  kind          EmailDeliveryKind   @default(TICKET)
   status        EmailDeliveryStatus @default(PENDING)
   attempts      Int                 @default(0)
   nextAttemptAt DateTime            @default(now())
@@ -123,6 +136,7 @@ model EmailDelivery {
   createdAt     DateTime            @default(now())
   updatedAt     DateTime            @updatedAt
 
+  @@unique([bookingId, kind])
   @@index([status, nextAttemptAt])
   @@index([status, lockedUntil])
 }

@@ -225,6 +225,8 @@ describe('seat service', () => {
         startTime: now,
         movieId: 'movie-1',
         roomId: 'Salle A',
+        status: 'SCHEDULED' as const,
+        cancelledAt: null,
         price: 9.505,
         createdAt: now,
         updatedAt: now,
@@ -258,7 +260,7 @@ describe('seat service', () => {
     });
 
     expect(findUnique).toHaveBeenCalledWith({
-      where: { id: 'showtime-1' },
+      where: { id: 'showtime-1', status: 'SCHEDULED' },
       select: { id: true, price: true },
     });
     expect(findMany).toHaveBeenCalledWith({
@@ -289,6 +291,8 @@ describe('seat service', () => {
         startTime: now,
         movieId: 'movie-1',
         roomId: 'Salle A',
+        status: 'SCHEDULED' as const,
+        cancelledAt: null,
         price: 9.5,
         createdAt: now,
         updatedAt: now,
@@ -347,6 +351,7 @@ describe('seat service', () => {
     expect(updateMany).toHaveBeenCalledWith({
       where: {
         showtimeId: 'showtime-1',
+        showtime: { is: { status: 'SCHEDULED' } },
         id: { in: ['seat-free'] },
         bookingId: null,
         holdId: null,
@@ -362,6 +367,8 @@ describe('seat service', () => {
       startTime: now,
       movieId: 'movie-1',
       roomId: 'Salle A',
+      status: 'SCHEDULED' as const,
+      cancelledAt: null,
       price: 9.5,
       createdAt: now,
       updatedAt: now,
@@ -422,6 +429,8 @@ describe('seat service', () => {
       startTime: now,
       movieId: 'movie-1',
       roomId: 'Salle A',
+      status: 'SCHEDULED' as const,
+      cancelledAt: null,
       price: 9.5,
       createdAt: now,
       updatedAt: now,

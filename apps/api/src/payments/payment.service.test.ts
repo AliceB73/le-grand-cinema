@@ -343,7 +343,9 @@ describe('payment service', () => {
       seats: [],
     });
     expect(findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: 'showtime-1' } }),
+      expect.objectContaining({
+        where: { id: 'showtime-1', status: 'SCHEDULED' },
+      }),
     );
 
     findUnique.mockResolvedValue(null);

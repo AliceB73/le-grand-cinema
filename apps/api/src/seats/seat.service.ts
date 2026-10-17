@@ -67,7 +67,7 @@ export class SeatUnavailableError extends Error {
 const prismaSeatRepository: SeatRepository = {
   findShowtimeSeats: async (showtimeId) => {
     const showtime = await prisma.showtime.findUnique({
-      where: { id: showtimeId },
+      where: { id: showtimeId, status: 'SCHEDULED' },
       select: { id: true, price: true },
     });
 
@@ -112,6 +112,7 @@ const prismaSeatRepository: SeatRepository = {
       const result = await transaction.seat.updateMany({
         where: {
           showtimeId,
+          showtime: { is: { status: 'SCHEDULED' } },
           id: { in: seatIds },
           bookingId: null,
           holdId: null,

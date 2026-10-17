@@ -1,4 +1,8 @@
-import { Prisma, type EmailDeliveryStatus } from '@prisma/client';
+import {
+  Prisma,
+  type EmailDeliveryKind,
+  type EmailDeliveryStatus,
+} from '@prisma/client';
 import { Resend } from 'resend';
 import QRCode from 'qrcode';
 import { prisma } from '../data/prisma.js';
@@ -21,11 +25,23 @@ export interface TicketEmailData {
 export interface ClaimedDelivery {
   id: string;
   attempts: number;
+  kind?: EmailDeliveryKind;
+}
+
+export interface CancellationEmailData {
+  bookingId: string;
+  email: string;
+  movieTitle: string;
+  startTime: Date;
+  roomName: string;
 }
 
 export interface TicketEmailRepository {
   claimNext(now: Date): Promise<ClaimedDelivery | null>;
   getEmailData(deliveryId: string): Promise<TicketEmailData | null>;
+  getCancellationData?(
+    deliveryId: string,
+  ): Promise<CancellationEmailData | null>;
   markSent(deliveryId: string, now: Date): Promise<void>;
   recordFailure(
     deliveryId: string,
@@ -43,7 +59,7 @@ export interface TicketEmailSender {
     subject: string;
     html: string;
     text: string;
-    qrImage: Buffer;
+    qrImage?: Buffer;
     idempotencyKey: string;
   }): Promise<void>;
 }
@@ -52,7 +68,7 @@ export const prismaTicketEmailRepository: TicketEmailRepository = {
   claimNext: async (now) =>
     prisma.$transaction(async (transaction) => {
       const rows = await transaction.$queryRaw<ClaimedDelivery[]>(Prisma.sql`
-        SELECT "id", "attempts"
+        SELECT "id", "attempts", "kind"
         FROM "EmailDelivery"
         WHERE (
           "status" = 'PENDING' AND "nextAttemptAt" <= ${now}
@@ -87,10 +103,44 @@ export const prismaTicketEmailRepository: TicketEmailRepository = {
           attempts: { increment: 1 },
           lockedUntil: new Date(now.getTime() + leaseDurationMs),
         },
-        select: { id: true, attempts: true },
+        select: { id: true, attempts: true, kind: true },
       });
       return updated;
     }),
+  getCancellationData: async (deliveryId) => {
+    const delivery = await prisma.emailDelivery.findUnique({
+      where: { id: deliveryId },
+      select: {
+        booking: {
+          select: {
+            id: true,
+            guestEmail: true,
+            user: { select: { email: true } },
+            showtime: {
+              select: {
+                status: true,
+                startTime: true,
+                movie: { select: { title: true } },
+                room: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+    const booking = delivery?.booking;
+    const email = booking?.guestEmail ?? booking?.user?.email;
+    if (!booking || !email || booking.showtime.status !== 'CANCELLED') {
+      return null;
+    }
+    return {
+      bookingId: booking.id,
+      email,
+      movieTitle: booking.showtime.movie.title,
+      startTime: booking.showtime.startTime,
+      roomName: booking.showtime.room.name,
+    };
+  },
   getEmailData: async (deliveryId) => {
     const delivery = await prisma.emailDelivery.findUnique({
       where: { id: deliveryId },
@@ -220,6 +270,31 @@ function ticketEmailContent(data: TicketEmailData) {
   };
 }
 
+function cancellationEmailContent(data: CancellationEmailData) {
+  const date = formatShowtime(data.startTime);
+  return {
+    subject: `Séance annulée : ${data.movieTitle}`,
+    text: [
+      'Nous sommes désolés : votre séance a été annulée.',
+      `Référence : ${data.bookingId}`,
+      `Film : ${data.movieTitle}`,
+      `Séance : ${date}`,
+      `Salle : ${data.roomName}`,
+      'Votre billet n’est plus valable. Le remboursement sera traité par notre équipe.',
+    ].join('\n'),
+    html: `<main style="font-family:Arial,sans-serif;color:#202124;max-width:600px;margin:auto">
+      <h1>Votre séance a été annulée</h1>
+      <p>Votre billet n’est plus valable. Le remboursement sera traité par notre équipe.</p>
+      <dl>
+        <dt>Référence</dt><dd>${escapeHtml(data.bookingId)}</dd>
+        <dt>Film</dt><dd>${escapeHtml(data.movieTitle)}</dd>
+        <dt>Séance</dt><dd>${escapeHtml(date)}</dd>
+        <dt>Salle</dt><dd>${escapeHtml(data.roomName)}</dd>
+      </dl>
+    </main>`,
+  };
+}
+
 function createResendSender(): TicketEmailSender {
   return {
     async send(input) {
@@ -239,14 +314,16 @@ function createResendSender(): TicketEmailSender {
           subject: input.subject,
           html: input.html,
           text: input.text,
-          attachments: [
-            {
-              filename: 'billet-qr.png',
-              content: input.qrImage,
-              contentType: 'image/png',
-              contentId: 'reservation-qr',
-            },
-          ],
+          attachments: input.qrImage
+            ? [
+                {
+                  filename: 'billet-qr.png',
+                  content: input.qrImage,
+                  contentType: 'image/png',
+                  contentId: 'reservation-qr',
+                },
+              ]
+            : undefined,
         },
         { idempotencyKey: input.idempotencyKey },
       );
@@ -272,6 +349,27 @@ export function createTicketEmailWorker(
       }
 
       try {
+        if (delivery.kind === 'SHOWTIME_CANCELLED') {
+          const notice = await repository.getCancellationData?.(delivery.id);
+          if (!notice) {
+            await repository.recordFailure(
+              delivery.id,
+              delivery.attempts,
+              'NOTICE_DATA_UNAVAILABLE',
+              now,
+              false,
+            );
+            return true;
+          }
+          await sender.send({
+            to: notice.email,
+            from: process.env.EMAIL_FROM ?? '',
+            ...cancellationEmailContent(notice),
+            idempotencyKey: delivery.id,
+          });
+          await repository.markSent(delivery.id, now);
+          return true;
+        }
         if (!tokenSecret || tokenSecret.length < 32) {
           throw new Error('TICKET_TOKEN_SECRET_NOT_CONFIGURED');
         }

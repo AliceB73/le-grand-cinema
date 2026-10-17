@@ -16,6 +16,8 @@ describe('getUpcomingProgramme', () => {
           id: 'screening-1',
           startTime: new Date('2026-10-04T15:00:00.000Z'),
           roomId: 'Salle A',
+          status: 'SCHEDULED' as const,
+          cancelledAt: null,
           room: {
             name: 'Salle A',
             category: RoomCategory.PREMIUM_IMAX,
@@ -25,7 +27,7 @@ describe('getUpcomingProgramme', () => {
             id: 'movie-1',
             title: 'Les Veilleurs du Phare',
             genre: Genre.THRILLER,
-            description: 'Un récit fictif.',
+            description: 'Un rÃ©cit fictif.',
             duration: 108,
             posterUrl: '/posters/veilleurs-du-phare.svg',
             createdAt: now,
@@ -67,6 +69,8 @@ describe('getUpcomingProgramme', () => {
       id,
       startTime: new Date('2026-10-04T15:00:00.000Z'),
       roomId: 'Salle A',
+      status: 'SCHEDULED' as const,
+      cancelledAt: null,
       room: {
         name: 'Salle A',
         category: RoomCategory.PREMIUM_IMAX,
@@ -76,7 +80,7 @@ describe('getUpcomingProgramme', () => {
         id: 'movie-1',
         title: 'Les Veilleurs du Phare',
         genre: Genre.THRILLER,
-        description: 'Un récit fictif.',
+        description: 'Un rÃ©cit fictif.',
         duration: 108,
         posterUrl: null,
         createdAt: now,
@@ -116,6 +120,7 @@ describe('getUpcomingProgramme', () => {
       await expect(getUpcomingProgramme()).resolves.toEqual([]);
       expect(findMany).toHaveBeenCalledWith({
         where: {
+          status: 'SCHEDULED',
           startTime: {
             gte: now,
             lt: new Date('2026-10-10T22:00:00.000Z'),
