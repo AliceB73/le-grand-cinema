@@ -11,6 +11,15 @@ const config: Config = {
     '<rootDir>/src/seat-api.ts',
     '<rootDir>/src/payment-api.ts',
     '<rootDir>/src/navigation.ts',
+    '<rootDir>/src/password-policy.ts',
+    '<rootDir>/src/auth-messages.ts',
+    '<rootDir>/src/AuthSessionProvider.tsx',
+    '<rootDir>/src/SiteHeader.tsx',
+    '<rootDir>/src/SignUpPage.tsx',
+    '<rootDir>/src/SignInPage.tsx',
+    '<rootDir>/src/ForgotPasswordPage.tsx',
+    '<rootDir>/src/ResetPasswordPage.tsx',
+    '<rootDir>/src/AppLayout.tsx',
   ],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   transform: {
@@ -27,6 +36,7 @@ const config: Config = {
   },
   moduleNameMapper: {
     '^\\./api-config$': '<rootDir>/src/api-config.mock.ts',
+    '^.+/supabase-client$': '<rootDir>/src/supabase-client.mock.ts',
   },
 };
 
