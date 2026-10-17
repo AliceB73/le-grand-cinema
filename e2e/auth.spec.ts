@@ -86,8 +86,64 @@ test('creates an account then signs in from the header', async ({ page }) => {
   await page.getByLabel('Mot de passe').fill(spectator.password);
   await page.getByRole('button', { name: 'Se connecter' }).click();
 
-  await expect(page).toHaveURL('/');
+  await expect(page).toHaveURL('/mon-espace');
   await expect(page.getByText(spectator.email)).toBeVisible();
+});
+
+test('shows bookings and the e-ticket QR code in the customer area', async ({
+  page,
+}) => {
+  const bookingId = '11111111-1111-4111-8111-111111111111';
+  await page.route('**/auth/v1/token**', async (route) => {
+    await json(route, {
+      access_token: 'access-token',
+      token_type: 'bearer',
+      expires_in: 3600,
+      refresh_token: 'refresh-token',
+      user: { id: 'user-1', email: spectator.email },
+    });
+  });
+  await page.route('**/auth/v1/user**', async (route) => {
+    await json(route, { id: 'user-1', email: spectator.email });
+  });
+  await page.route('**/api/me/bookings', async (route) => {
+    expect(route.request().headers().authorization).toBe('Bearer access-token');
+    await json(route, {
+      bookings: [
+        {
+          id: bookingId,
+          movieTitle: 'Film de test',
+          roomName: 'Salle 1',
+          startTime: '2030-01-10T18:00:00.000Z',
+          seats: [{ rowNumber: 'A', seatNumber: 1 }],
+          seatCount: 1,
+          used: false,
+          isUpcoming: true,
+        },
+      ],
+    });
+  });
+  await page.route('**/api/me/bookings/*/ticket', async (route) => {
+    await json(route, {
+      qrCodeDataUrl:
+        'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      used: false,
+    });
+  });
+
+  await page.goto('/mon-espace');
+  await expect(page).toHaveURL(/\/connexion$/);
+
+  await page.getByLabel('Adresse e-mail').fill(spectator.email);
+  await page.getByLabel('Mot de passe').fill(spectator.password);
+  await page.getByRole('button', { name: 'Se connecter' }).click();
+
+  await expect(page).toHaveURL('/mon-espace');
+  await expect(
+    page.getByRole('heading', { name: 'Film de test' }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: /Afficher le billet/ }).click();
+  await expect(page.getByAltText(/QR code du billet/)).toBeVisible();
 });
 
 test('requests a password reset email', async ({ page }) => {

@@ -66,6 +66,18 @@ describe('SiteHeader', () => {
     expect(await screen.findByRole('link', { name: 'Connexion' })).toBeTruthy();
   });
 
+  it('links to the customer area when signed in', async () => {
+    jest.mocked(supabase!.auth.getSession).mockResolvedValue({
+      data: { session: { user: { email: 'alice@example.com' } } },
+      error: null,
+    } as never);
+
+    renderHeader();
+
+    const link = await screen.findByRole('link', { name: 'Mes billets' });
+    expect(link.getAttribute('href')).toBe('/mon-espace');
+  });
+
   it('preserves the session and reports a failed sign-out', async () => {
     jest.mocked(supabase!.auth.getSession).mockResolvedValue({
       data: {

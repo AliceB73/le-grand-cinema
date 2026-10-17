@@ -20,6 +20,12 @@ export default function SiteHeader() {
             </p>
           ) : email ? (
             <>
+              <Link
+                className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"
+                to="/mon-espace"
+              >
+                Mes billets
+              </Link>
               <p className="text-sm text-slate-300">{email}</p>
               <button
                 className="rounded-lg border border-slate-500 px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"
