@@ -110,5 +110,4 @@ Les tests bout en bout Playwright lancent le serveur front automatiquement. Le w
 
 ## Espace administrateur
 
-Après `prisma:migrate` puis `db:seed`, un compte admin de démo est créé (`admin@legrandcinema.local` / `AdminDemo-2026!`, modifiables via `ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD`). Le seed requiert `SUPABASE_URL` et `SUPABASE_SERVICE_ROLE_KEY`. L'espace est accessible sur `/admin`.
-
+Aprï¿½s `prisma:migrate` puis `db:seed`, un compte admin de dï¿½mo est crï¿½ï¿½ (`admin@legrandcinema.local` / `AdminDemo-2026!`, modifiables via `ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD`). Le seed requiert `SUPABASE_URL` et `SUPABASE_SERVICE_ROLE_KEY`. L'espace est accessible sur `/admin`.
