@@ -1,4 +1,5 @@
 import { Outlet } from 'react-router-dom';
+import PrivacyConsentBanner from './PrivacyConsentBanner';
 import SiteHeader from './SiteHeader';
 
 export default function AppLayout() {
@@ -6,6 +7,7 @@ export default function AppLayout() {
     <div className="min-h-screen bg-slate-950 text-slate-100">
       <SiteHeader />
       <Outlet />
+      <PrivacyConsentBanner />
     </div>
   );
 }

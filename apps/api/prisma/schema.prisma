@@ -105,7 +105,7 @@ model Showtime {
 model Booking {
   id                      String        @id @default(uuid())
   userId                  String?
-  user                    User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                    User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
   guestEmail              String?
   showtimeId              String
   showtime                Showtime      @relation(fields: [showtimeId], references: [id], onDelete: Cascade)

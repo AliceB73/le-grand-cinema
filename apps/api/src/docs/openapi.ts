@@ -384,6 +384,24 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: 'delete',
+  path: '/api/me/account',
+  summary: 'Supprimer le compte spectateur',
+  description:
+    'Anonymise les coordonnées des réservations conservées puis supprime le compte Supabase Auth du spectateur connecté.',
+  request: {
+    headers: z.object({ authorization: z.string().startsWith('Bearer ') }),
+  },
+  responses: {
+    204: { description: 'Compte supprimé et réservations anonymisées' },
+    401: { description: 'Authentification requise ou invalide' },
+    403: { description: 'Compte non spectateur' },
+    500: { description: 'Données du compte indisponibles' },
+    503: { description: 'Suppression du compte indisponible' },
+  },
+});
+
+registry.registerPath({
   method: 'get',
   path: '/api/me/bookings/{bookingId}/ticket',
   summary: 'Consulter le QR code dâ€™un e-billet',

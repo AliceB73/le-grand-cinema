@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AUTH_UNAVAILABLE_MESSAGE,
   getSignInErrorMessage,
@@ -13,6 +13,7 @@ import { supabase } from './supabase-client';
 
 export default function SignInPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -47,6 +48,18 @@ export default function SignInPage() {
   return (
     <main className={authPageClassName}>
       <h1 className="text-3xl font-bold tracking-tight">Connexion</h1>
+      {searchParams.get('accountDeleted') === '1' && (
+        <p className="text-sm text-emerald-200" role="status">
+          Votre compte a été supprimé et les réservations conservées ont été
+          anonymisées.
+        </p>
+      )}
+      {searchParams.get('sessionCleanupFailed') === '1' && (
+        <p className="text-sm text-rose-200" role="alert">
+          La session locale n’a pas pu être fermée. Supprimez-la depuis les
+          paramètres de votre navigateur avant de vous reconnecter.
+        </p>
+      )}
       <p className="text-slate-300">
         Connectez-vous avec l’adresse e-mail de votre compte.
       </p>

@@ -6,6 +6,7 @@ const environmentSchema = z.object({
   DIRECT_URL: z.string().url(),
   SUPABASE_URL: z.string().url(),
   SUPABASE_ANON_KEY: z.string().min(1),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
   STRIPE_SECRET_KEY: z.string().startsWith('sk_test_').optional(),
   STRIPE_WEBHOOK_SECRET: z.string().startsWith('whsec_').optional(),
   WEB_BASE_URL: z.string().url().default('http://localhost:5173'),

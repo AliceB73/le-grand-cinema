@@ -112,6 +112,7 @@ describe('API baseline', () => {
     expect(response.status).toBe(200);
     expect(response.body.openapi).toBe('3.0.0');
     expect(response.body.paths['/api/health']).toBeDefined();
+    expect(response.body.paths['/api/me/account'].delete).toBeDefined();
     expect(response.body.paths['/api/tickets/check-in'].post).toBeDefined();
     expect(response.body.paths['/api/programme']).toBeDefined();
     expect(

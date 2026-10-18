@@ -5,11 +5,21 @@ import {
   CustomerAuthenticationError,
   type CustomerAuthenticator,
 } from './auth/customer-auth.js';
+import {
+  AccountDeletionError,
+  type AccountDeletionService,
+} from './auth/account-deletion.js';
 import type { CustomerTicketService } from './tickets/customer-ticket.service.js';
 
 const bookingId = '11111111-1111-4111-8111-111111111111';
+const customerId = '22222222-2222-4222-8222-222222222222';
 
-function buildApp(authorize: CustomerAuthenticator['authorize']) {
+function buildApp(
+  authorize: CustomerAuthenticator['authorize'],
+  accountDeletionService: AccountDeletionService = {
+    deleteAccount: jest.fn<AccountDeletionService['deleteAccount']>(),
+  },
+) {
   const service: jest.Mocked<CustomerTicketService> = {
     listBookings: jest
       .fn<CustomerTicketService['listBookings']>()
@@ -29,14 +39,17 @@ function buildApp(authorize: CustomerAuthenticator['authorize']) {
     undefined,
     { authorize },
     service,
+    undefined,
+    accountDeletionService,
   );
-  return { app, service };
+  return { app, service, accountDeletionService };
 }
 
 describe('customer booking routes', () => {
   it('scopes bookings and tickets to the authenticated e-mail', async () => {
     const { app, service } = buildApp(
       jest.fn<CustomerAuthenticator['authorize']>().mockResolvedValue({
+        id: customerId,
         email: 'alice@example.com',
       }),
     );
@@ -80,7 +93,7 @@ describe('customer booking routes', () => {
     const { app, service } = buildApp(
       jest
         .fn<CustomerAuthenticator['authorize']>()
-        .mockResolvedValue({ email: 'alice@example.com' }),
+        .mockResolvedValue({ id: customerId, email: 'alice@example.com' }),
     );
     service.getTicketQr.mockResolvedValue(null);
 
@@ -109,7 +122,7 @@ describe('customer booking routes', () => {
     const failing = buildApp(
       jest
         .fn<CustomerAuthenticator['authorize']>()
-        .mockResolvedValue({ email: 'alice@example.com' }),
+        .mockResolvedValue({ id: customerId, email: 'alice@example.com' }),
     );
     failing.service.listBookings.mockRejectedValue(new Error('db'));
     failing.service.getTicketQr.mockRejectedValue(new Error('qr'));
@@ -138,5 +151,60 @@ describe('customer booking routes', () => {
 
     expect(response.status).toBe(401);
     expect(service.getTicketQr).not.toHaveBeenCalled();
+  });
+
+  it('deletes only the authenticated customer account', async () => {
+    const { app, accountDeletionService } = buildApp(
+      jest
+        .fn<CustomerAuthenticator['authorize']>()
+        .mockResolvedValue({ id: customerId, email: 'alice@example.com' }),
+    );
+
+    const response = await request(app)
+      .delete('/api/me/account')
+      .set('Authorization', 'Bearer customer-token');
+
+    expect(response.status).toBe(204);
+    expect(accountDeletionService.deleteAccount).toHaveBeenCalledWith(
+      customerId,
+      'alice@example.com',
+    );
+  });
+
+  it('does not delete an account when customer authorization fails', async () => {
+    const { app, accountDeletionService } = buildApp(
+      jest
+        .fn<CustomerAuthenticator['authorize']>()
+        .mockRejectedValue(new CustomerAuthenticationError('missing')),
+    );
+
+    const response = await request(app).delete('/api/me/account');
+
+    expect(response.status).toBe(401);
+    expect(accountDeletionService.deleteAccount).not.toHaveBeenCalled();
+  });
+
+  it('reports unavailable deletion dependencies explicitly', async () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const { app } = buildApp(
+      jest
+        .fn<CustomerAuthenticator['authorize']>()
+        .mockResolvedValue({ id: customerId, email: 'alice@example.com' }),
+      {
+        deleteAccount: jest
+          .fn<AccountDeletionService['deleteAccount']>()
+          .mockRejectedValue(new AccountDeletionError('unavailable')),
+      },
+    );
+
+    const response = await request(app)
+      .delete('/api/me/account')
+      .set('Authorization', 'Bearer customer-token');
+
+    expect(response.status).toBe(503);
+    expect(response.body.error).toBe('ACCOUNT_DELETION_UNAVAILABLE');
+    consoleError.mockRestore();
   });
 });

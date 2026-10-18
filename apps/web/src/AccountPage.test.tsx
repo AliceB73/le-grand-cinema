@@ -8,6 +8,7 @@ import { supabase } from './supabase-client';
 
 jest.mock('./my-bookings-api', () => ({
   ...(jest.requireActual('./my-bookings-api') as object),
+  deleteMyAccount: jest.fn(),
   getMyBookings: jest.fn(),
   getMyTicket: jest.fn(),
 }));
@@ -49,6 +50,8 @@ function renderPage() {
 describe('AccountPage', () => {
   afterEach(() => {
     cleanup();
+    jest.mocked(api.deleteMyAccount).mockReset();
+    jest.mocked(supabase!.auth.signOut).mockReset();
     jest.mocked(supabase!.auth.getSession).mockResolvedValue({
       data: { session: null },
       error: null,
@@ -163,5 +166,47 @@ describe('AccountPage', () => {
     expect((await screen.findByRole('alert')).textContent).toContain(
       'réservé aux comptes spectateurs',
     );
+  });
+
+  it('confirms deletion, clears the local session and returns to sign in', async () => {
+    signIn();
+    jest.mocked(api.getMyBookings).mockResolvedValue([]);
+    jest.mocked(api.deleteMyAccount).mockResolvedValue();
+    jest.mocked(supabase!.auth.signOut).mockResolvedValue({
+      error: null,
+    } as never);
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Supprimer mon compte' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirmer la suppression' }),
+    );
+
+    expect(await screen.findByText('Page de connexion')).toBeTruthy();
+    expect(api.deleteMyAccount).toHaveBeenCalledWith('tok');
+    expect(supabase!.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
+  });
+
+  it('keeps the confirmation open and reports a deletion failure', async () => {
+    signIn();
+    jest.mocked(api.getMyBookings).mockResolvedValue([]);
+    jest
+      .mocked(api.deleteMyAccount)
+      .mockRejectedValue(new api.CustomerApiError(503));
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Supprimer mon compte' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirmer la suppression' }),
+    );
+
+    expect(
+      await screen.findByText(/suppression du compte n’a pas pu aboutir/),
+    ).toBeTruthy();
+    expect(supabase!.auth.signOut).not.toHaveBeenCalled();
   });
 });
