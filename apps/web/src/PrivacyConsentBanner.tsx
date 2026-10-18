@@ -43,7 +43,7 @@ export default function PrivacyConsentBanner() {
       {isOpen ? (
         <section
           aria-labelledby="privacy-consent-title"
-          className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-700 bg-slate-900 p-5 shadow-2xl sm:p-6"
+          className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-700 bg-slate-900 p-5 shadow-2xl sm:p-6"
           role="region"
         >
           <div className="mx-auto max-w-5xl space-y-4">
@@ -83,7 +83,7 @@ export default function PrivacyConsentBanner() {
       ) : (
         <button
           aria-label="Gérer les préférences de confidentialité"
-          className="fixed bottom-4 right-4 z-40 rounded-full border border-slate-600 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-200 shadow-lg hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"
+          className="fixed bottom-4 right-4 z-30 rounded-full border border-slate-600 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-200 shadow-lg hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"
           onClick={() => setIsOpen(true)}
           type="button"
         >
@@ -91,7 +91,7 @@ export default function PrivacyConsentBanner() {
         </button>
       )}
       {!isOpen && errorMessage && (
-        <p className="fixed bottom-16 right-4 z-40 rounded bg-slate-900 p-3 text-sm text-rose-200">
+        <p className="fixed bottom-16 right-4 z-30 rounded bg-slate-900 p-3 text-sm text-rose-200">
           {errorMessage}
         </p>
       )}
