@@ -207,4 +207,36 @@ describe('customer booking routes', () => {
     expect(response.body.error).toBe('ACCOUNT_DELETION_UNAVAILABLE');
     consoleError.mockRestore();
   });
+
+  it('distinguishes data preparation failures from Auth Admin failures', async () => {
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined);
+    const authorize = jest
+      .fn<CustomerAuthenticator['authorize']>()
+      .mockResolvedValue({ id: customerId, email: 'alice@example.com' });
+    const preparationFailure = buildApp(authorize, {
+      deleteAccount: jest
+        .fn<AccountDeletionService['deleteAccount']>()
+        .mockRejectedValue(new AccountDeletionError('database')),
+    });
+    const unexpectedFailure = buildApp(authorize, {
+      deleteAccount: jest
+        .fn<AccountDeletionService['deleteAccount']>()
+        .mockRejectedValue(new Error('unexpected')),
+    });
+
+    const preparationResponse = await request(preparationFailure.app).delete(
+      '/api/me/account',
+    );
+    const unexpectedResponse = await request(unexpectedFailure.app).delete(
+      '/api/me/account',
+    );
+
+    expect(preparationResponse.status).toBe(500);
+    expect(preparationResponse.body.error).toBe('ACCOUNT_DATA_UNAVAILABLE');
+    expect(unexpectedResponse.status).toBe(500);
+    expect(unexpectedResponse.body.error).toBe('ACCOUNT_DELETION_UNAVAILABLE');
+    consoleError.mockRestore();
+  });
 });

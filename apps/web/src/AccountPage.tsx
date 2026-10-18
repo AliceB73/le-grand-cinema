@@ -217,6 +217,15 @@ export default function AccountPage() {
   }
 
   if (!email) {
+    if (isDeletingAccount) {
+      return (
+        <main className="mx-auto max-w-3xl px-6 py-12 sm:px-10">
+          <p className="text-slate-300" role="status">
+            Fermeture de la session du compte supprimé…
+          </p>
+        </main>
+      );
+    }
     return <Navigate replace to="/connexion" />;
   }
 

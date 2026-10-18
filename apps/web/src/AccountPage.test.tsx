@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, jest } from '@jest/globals';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import AccountPage from './AccountPage';
 import { AuthSessionProvider } from './AuthSessionProvider';
 import * as api from './my-bookings-api';
@@ -40,11 +40,24 @@ function renderPage() {
       <AuthSessionProvider>
         <Routes>
           <Route path="/mon-espace" element={<AccountPage />} />
-          <Route path="/connexion" element={<p>Page de connexion</p>} />
+          <Route
+            path="/connexion"
+            element={
+              <>
+                <p>Page de connexion</p>
+                <ConnectionSearch />
+              </>
+            }
+          />
         </Routes>
       </AuthSessionProvider>
     </MemoryRouter>,
   );
+}
+
+function ConnectionSearch() {
+  const location = useLocation();
+  return <p>{location.search}</p>;
 }
 
 describe('AccountPage', () => {
@@ -189,6 +202,22 @@ describe('AccountPage', () => {
     expect(supabase!.auth.signOut).toHaveBeenCalledWith({ scope: 'local' });
   });
 
+  it('allows the user to cancel account deletion', async () => {
+    signIn();
+    jest.mocked(api.getMyBookings).mockResolvedValue([]);
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Supprimer mon compte' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+
+    expect(
+      screen.queryByRole('button', { name: 'Confirmer la suppression' }),
+    ).toBeNull();
+    expect(api.deleteMyAccount).not.toHaveBeenCalled();
+  });
+
   it('keeps the confirmation open and reports a deletion failure', async () => {
     signIn();
     jest.mocked(api.getMyBookings).mockResolvedValue([]);
@@ -208,5 +237,45 @@ describe('AccountPage', () => {
       await screen.findByText(/suppression du compte n’a pas pu aboutir/),
     ).toBeTruthy();
     expect(supabase!.auth.signOut).not.toHaveBeenCalled();
+  });
+
+  it('navigates to sign in with an explicit message if session cleanup fails', async () => {
+    signIn();
+    jest.mocked(api.getMyBookings).mockResolvedValue([]);
+    jest.mocked(api.deleteMyAccount).mockResolvedValue();
+    jest.mocked(supabase!.auth.signOut).mockResolvedValue({
+      error: new Error('offline'),
+    } as never);
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Supprimer mon compte' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirmer la suppression' }),
+    );
+
+    expect(await screen.findByText('Page de connexion')).toBeTruthy();
+    expect(
+      screen.getByText('?accountDeleted=1&sessionCleanupFailed=1'),
+    ).toBeTruthy();
+  });
+
+  it('asks the user to reconnect when deletion reports an expired session', async () => {
+    signIn();
+    jest.mocked(api.getMyBookings).mockResolvedValue([]);
+    jest
+      .mocked(api.deleteMyAccount)
+      .mockRejectedValue(new api.CustomerApiError(401));
+
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Supprimer mon compte' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Confirmer la suppression' }),
+    );
+
+    expect(await screen.findByText(/session a expiré/)).toBeTruthy();
   });
 });

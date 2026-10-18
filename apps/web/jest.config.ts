@@ -20,6 +20,7 @@ const config: Config = {
     '<rootDir>/src/ForgotPasswordPage.tsx',
     '<rootDir>/src/ResetPasswordPage.tsx',
     '<rootDir>/src/AppLayout.tsx',
+    '<rootDir>/src/PrivacyConsentBanner.tsx',
     '<rootDir>/src/AccountPage.tsx',
     '<rootDir>/src/my-bookings-api.ts',
     '<rootDir>/src/admin-api.ts',
