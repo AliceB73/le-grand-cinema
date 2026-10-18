@@ -6,24 +6,29 @@ import { prisma } from '../data/prisma.js';
 function build(
   role: Role | null,
   fetcher: typeof fetch = jest.fn<typeof fetch>().mockResolvedValue(
-    new Response(JSON.stringify({ email: 'Alice@Example.com' }), {
-      status: 200,
-    }),
+    new Response(
+      JSON.stringify({
+        id: '11111111-1111-4111-8111-111111111111',
+        email: 'Alice@Example.com',
+      }),
+      { status: 200 },
+    ),
   ),
 ) {
   return createCustomerAuthenticator({
     supabaseUrl: 'https://example.supabase.co',
     supabaseAnonKey: 'anon-key',
     fetcher,
-    findRoleByEmail: jest
-      .fn<(email: string) => Promise<Role | null>>()
+    findRoleById: jest
+      .fn<(id: string) => Promise<Role | null>>()
       .mockResolvedValue(role),
   });
 }
 
 describe('customer authenticator', () => {
-  it('returns the lowercased e-mail of a USER account', async () => {
+  it('returns the identity and lowercased e-mail of a USER account', async () => {
     await expect(build(Role.USER).authorize('Bearer token')).resolves.toEqual({
+      id: '11111111-1111-4111-8111-111111111111',
       email: 'alice@example.com',
     });
   });
@@ -42,6 +47,13 @@ describe('customer authenticator', () => {
       ['not-json', 'unavailable'],
       [JSON.stringify({ email: '' }), 'invalid'],
       [JSON.stringify(null), 'invalid'],
+      [
+        JSON.stringify({
+          id: 'not-a-uuid',
+          email: 'alice@example.com',
+        }),
+        'invalid',
+      ],
     ] as const) {
       const authenticator = build(
         Role.USER,
@@ -54,13 +66,16 @@ describe('customer authenticator', () => {
     const failingLookup = createCustomerAuthenticator({
       supabaseUrl: 'https://example.supabase.co',
       supabaseAnonKey: 'anon-key',
-      fetcher: jest
-        .fn<typeof fetch>()
-        .mockResolvedValue(
-          new Response(JSON.stringify({ email: 'a@example.com' })),
+      fetcher: jest.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            id: '11111111-1111-4111-8111-111111111111',
+            email: 'a@example.com',
+          }),
         ),
-      findRoleByEmail: jest
-        .fn<(email: string) => Promise<Role | null>>()
+      ),
+      findRoleById: jest
+        .fn<(id: string) => Promise<Role | null>>()
         .mockRejectedValue(new Error('db down')),
     });
     await expect(failingLookup.authorize('Bearer t')).rejects.toMatchObject({
@@ -95,21 +110,26 @@ describe('customer authenticator', () => {
     const authenticator = createCustomerAuthenticator({
       supabaseUrl: 'https://example.supabase.co',
       supabaseAnonKey: 'anon-key',
-      fetcher: jest
-        .fn<typeof fetch>()
-        .mockImplementation(
-          async () => new Response(JSON.stringify({ email: 'A@example.com' })),
-        ),
+      fetcher: jest.fn<typeof fetch>().mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({
+              id: '11111111-1111-4111-8111-111111111111',
+              email: 'A@example.com',
+            }),
+          ),
+      ),
     });
 
     await expect(authenticator.authorize('Bearer t')).resolves.toEqual({
+      id: '11111111-1111-4111-8111-111111111111',
       email: 'a@example.com',
     });
     await expect(authenticator.authorize('Bearer t')).rejects.toMatchObject({
       reason: 'forbidden',
     });
     expect(findUnique).toHaveBeenCalledWith({
-      where: { email: 'a@example.com' },
+      where: { id: '11111111-1111-4111-8111-111111111111' },
       select: { role: true },
     });
   });

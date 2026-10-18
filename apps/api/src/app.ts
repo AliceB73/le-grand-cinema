@@ -20,6 +20,11 @@ import {
   type CustomerAuthenticator,
 } from './auth/customer-auth.js';
 import {
+  AccountDeletionError,
+  createAccountDeletionService,
+  type AccountDeletionService,
+} from './auth/account-deletion.js';
+import {
   createCustomerTicketService,
   type CustomerTicketService,
 } from './tickets/customer-ticket.service.js';
@@ -136,6 +141,7 @@ export function createApp(
   customerAuthenticator: CustomerAuthenticator = createCustomerAuthenticator(),
   customerTicketService: CustomerTicketService = createCustomerTicketService(),
   adminService: AdminService = createAdminService(),
+  accountDeletionService: AccountDeletionService = createAccountDeletionService(),
 ) {
   const app = express();
 
@@ -531,6 +537,42 @@ export function createApp(
       response.status(500).json({
         error: 'BOOKINGS_UNAVAILABLE',
         message: 'Vos réservations sont momentanément indisponibles.',
+      });
+    }
+  });
+  app.delete('/api/me/account', async (request, response) => {
+    const customer = await authorizeCustomer(request, response);
+    if (!customer) {
+      return;
+    }
+    try {
+      await accountDeletionService.deleteAccount(customer.id, customer.email);
+      response.status(204).end();
+    } catch (error) {
+      if (error instanceof AccountDeletionError) {
+        if (error.reason === 'unavailable') {
+          console.error('Account deletion is unavailable.');
+          response.status(503).json({
+            error: 'ACCOUNT_DELETION_UNAVAILABLE',
+            message:
+              'La suppression du compte est momentanément indisponible. Réessayez plus tard.',
+          });
+          return;
+        }
+        console.error('Failed to anonymize customer account data.');
+        response.status(500).json({
+          error: 'ACCOUNT_DATA_UNAVAILABLE',
+          message:
+            'Les données du compte n’ont pas pu être préparées pour suppression.',
+        });
+        return;
+      }
+
+      console.error('Failed to delete a customer account.', error);
+      response.status(500).json({
+        error: 'ACCOUNT_DELETION_UNAVAILABLE',
+        message:
+          'La suppression du compte est momentanément indisponible. Réessayez plus tard.',
       });
     }
   });

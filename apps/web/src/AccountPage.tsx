@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useAuthSession } from './AuthSessionProvider';
 import {
   CustomerApiError,
+  deleteMyAccount,
   getMyBookings,
   getMyTicket,
   type CustomerBooking,
@@ -139,9 +140,15 @@ function BookingSection({
 }
 
 export default function AccountPage() {
-  const { email, isReady } = useAuthSession();
+  const { clearDeletedAccountSession, email, isReady } = useAuthSession();
+  const navigate = useNavigate();
   const [bookings, setBookings] = useState<CustomerBooking[] | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isConfirmingDeletion, setIsConfirmingDeletion] = useState(false);
+  const [isDeletingAccount, setIsDeletingAccount] = useState(false);
+  const [deletionErrorMessage, setDeletionErrorMessage] = useState<
+    string | null
+  >(null);
 
   useEffect(() => {
     if (!email) {
@@ -175,6 +182,30 @@ export default function AccountPage() {
     };
   }, [email]);
 
+  async function deleteAccount() {
+    setIsDeletingAccount(true);
+    setDeletionErrorMessage(null);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error('NO_SESSION');
+      }
+      await deleteMyAccount(accessToken);
+      const sessionCleared = await clearDeletedAccountSession();
+      void navigate(
+        `/connexion?accountDeleted=1${sessionCleared ? '' : '&sessionCleanupFailed=1'}`,
+        { replace: true },
+      );
+    } catch (error) {
+      setDeletionErrorMessage(
+        error instanceof CustomerApiError && error.status === 401
+          ? 'Votre session a expiré. Reconnectez-vous avant de supprimer votre compte.'
+          : 'La suppression du compte n’a pas pu aboutir. Réessayez dans quelques instants.',
+      );
+      setIsDeletingAccount(false);
+    }
+  }
+
   if (!isReady) {
     return (
       <main className="mx-auto max-w-3xl px-6 py-12 sm:px-10">
@@ -186,6 +217,15 @@ export default function AccountPage() {
   }
 
   if (!email) {
+    if (isDeletingAccount) {
+      return (
+        <main className="mx-auto max-w-3xl px-6 py-12 sm:px-10">
+          <p className="text-slate-300" role="status">
+            Fermeture de la session du compte supprimé…
+          </p>
+        </main>
+      );
+    }
     return <Navigate replace to="/connexion" />;
   }
 
@@ -217,6 +257,60 @@ export default function AccountPage() {
           />
         </>
       )}
+      <section
+        aria-labelledby="delete-account-title"
+        className="space-y-4 border-t border-slate-700 pt-6"
+      >
+        <h2 className="text-xl font-semibold" id="delete-account-title">
+          Suppression du compte
+        </h2>
+        <p className="text-sm text-slate-300">
+          Vous pouvez supprimer votre compte à tout moment. Les réservations
+          conservées sont anonymisées et ne sont plus accessibles depuis votre
+          compte.
+        </p>
+        {deletionErrorMessage && (
+          <p className="text-sm text-rose-200" role="alert">
+            {deletionErrorMessage}
+          </p>
+        )}
+        {!isConfirmingDeletion ? (
+          <button
+            className="rounded-lg border border-rose-400 px-4 py-2 text-sm font-semibold text-rose-200 hover:bg-rose-950 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300"
+            onClick={() => setIsConfirmingDeletion(true)}
+            type="button"
+          >
+            Supprimer mon compte
+          </button>
+        ) : (
+          <div className="space-y-3 rounded-lg border border-rose-400/50 bg-rose-950/30 p-4">
+            <p className="font-semibold">
+              Cette suppression est définitive. Confirmez-vous la suppression de
+              votre compte ?
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <button
+                className="rounded-lg bg-rose-400 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-rose-300 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300 disabled:opacity-60"
+                disabled={isDeletingAccount}
+                onClick={() => void deleteAccount()}
+                type="button"
+              >
+                {isDeletingAccount
+                  ? 'Suppression en cours…'
+                  : 'Confirmer la suppression'}
+              </button>
+              <button
+                className="rounded-lg border border-slate-500 px-4 py-2 text-sm font-semibold hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-amber-300 disabled:opacity-60"
+                disabled={isDeletingAccount}
+                onClick={() => setIsConfirmingDeletion(false)}
+                type="button"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
     </main>
   );
 }

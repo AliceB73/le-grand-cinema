@@ -71,3 +71,16 @@ export function getMyTicket(
     fetcher,
   );
 }
+
+export async function deleteMyAccount(
+  accessToken: string,
+  fetcher: CustomerFetcher = fetch,
+) {
+  const response = await fetcher(`${apiBaseUrl}/api/me/account`, {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    throw new CustomerApiError(response.status);
+  }
+}

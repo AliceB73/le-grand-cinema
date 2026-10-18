@@ -11,6 +11,7 @@ export class CustomerAuthenticationError extends Error {
 }
 
 export interface AuthenticatedCustomer {
+  id: string;
   email: string;
 }
 
@@ -18,16 +19,16 @@ interface CustomerAuthenticatorOptions {
   supabaseUrl?: string;
   supabaseAnonKey?: string;
   fetcher?: typeof fetch;
-  findRoleByEmail?: (email: string) => Promise<Role | null>;
+  findRoleById?: (id: string) => Promise<Role | null>;
 }
 
 export function createCustomerAuthenticator({
   supabaseUrl = process.env.SUPABASE_URL,
   supabaseAnonKey = process.env.SUPABASE_ANON_KEY,
   fetcher = fetch,
-  findRoleByEmail = async (email) => {
+  findRoleById = async (id) => {
     const user = await prisma.user.findUnique({
-      where: { email },
+      where: { id },
       select: { role: true },
     });
     return user?.role ?? null;
@@ -73,6 +74,11 @@ export function createCustomerAuthenticator({
       if (
         typeof profile !== 'object' ||
         profile === null ||
+        !('id' in profile) ||
+        typeof profile.id !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          profile.id,
+        ) ||
         !('email' in profile) ||
         typeof profile.email !== 'string' ||
         profile.email.length === 0
@@ -83,14 +89,14 @@ export function createCustomerAuthenticator({
       const email = profile.email.toLowerCase();
       let role: Role | null;
       try {
-        role = await findRoleByEmail(email);
+        role = await findRoleById(profile.id);
       } catch {
         throw new CustomerAuthenticationError('unavailable');
       }
       if (role !== Role.USER) {
         throw new CustomerAuthenticationError('forbidden');
       }
-      return { email };
+      return { id: profile.id, email };
     },
   };
 }

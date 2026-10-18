@@ -1,6 +1,7 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import {
   CustomerApiError,
+  deleteMyAccount,
   getMyBookings,
   getMyTicket,
 } from './my-bookings-api';
@@ -62,5 +63,17 @@ describe('my-bookings-api', () => {
     await expect(getMyBookings('tok', reply(403, {}))).rejects.toMatchObject({
       status: 403,
     } satisfies Partial<CustomerApiError>);
+  });
+
+  it('requests deletion of the authenticated account', async () => {
+    const fetcher = reply(204, {});
+    await expect(deleteMyAccount('tok', fetcher)).resolves.toBeUndefined();
+    expect(fetcher.mock.calls[0]).toEqual([
+      'http://localhost:3000/api/me/account',
+      {
+        method: 'DELETE',
+        headers: { authorization: 'Bearer tok' },
+      },
+    ]);
   });
 });

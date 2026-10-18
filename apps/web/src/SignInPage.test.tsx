@@ -70,4 +70,21 @@ describe('SignInPage', () => {
       ),
     ).toBeTruthy();
   });
+
+  it('explains that the account was deleted and reservations anonymized', () => {
+    render(
+      <MemoryRouter
+        initialEntries={['/connexion?accountDeleted=1&sessionCleanupFailed=1']}
+      >
+        <SignInPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole('status').textContent).toContain(
+      'compte a été supprimé',
+    );
+    expect(screen.getByRole('alert').textContent).toContain(
+      'session locale n’a pas pu être fermée',
+    );
+  });
 });

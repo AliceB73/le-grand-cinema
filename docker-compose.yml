@@ -13,6 +13,7 @@ services:
       DIRECT_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
       SUPABASE_URL: http://host.docker.internal:54321
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?Set SUPABASE_ANON_KEY in .env from supabase status}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set SUPABASE_SERVICE_ROLE_KEY in .env from supabase status}
     extra_hosts:
       - host.docker.internal:host-gateway
     ports:
