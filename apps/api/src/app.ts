@@ -3,6 +3,7 @@ import cors from 'cors';
 import { z } from 'zod';
 import { Genre } from '@prisma/client';
 import swaggerUi from 'swagger-ui-express';
+import { getAllowedCorsOrigins } from './config/cors-origins.js';
 import { openApiDocument } from './docs/openapi.js';
 import {
   createPaymentService,
@@ -193,7 +194,7 @@ export function createApp(
   app.use(express.json());
   app.use(
     cors({
-      origin: ['http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: getAllowedCorsOrigins(),
     }),
   );
   app.get('/api/health', (_request, response) => {
