@@ -42,6 +42,7 @@ const config: Config = {
     ],
   },
   moduleNameMapper: {
+    '^\\./app-base$': '<rootDir>/src/app-base.mock.ts',
     '^\\./api-config$': '<rootDir>/src/api-config.mock.ts',
     '^.+/supabase-client$': '<rootDir>/src/supabase-client.mock.ts',
   },
