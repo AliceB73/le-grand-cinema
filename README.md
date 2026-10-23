@@ -67,6 +67,18 @@ npm.cmd run db:seed
 
 Le seed peut être relancé sans créer de doublons : il crée trois films et 72 séances, à raison de deux séances hebdomadaires par film, du 12 octobre au 31 décembre 2026. Les jours et horaires sont pseudo-aléatoires, réalistes et identiques à chaque relance. Les migrations applicatives sont gérées par Prisma ; après une réinitialisation complète de Supabase, appliquez les migrations déjà versionnées avec `npm run prisma:migrate`, puis relancez le seed. Cette réinitialisation efface les données de la base locale.
 
+### Développement local avec le projet Supabase cloud
+
+Pour que l’application locale utilise le projet Supabase cloud, configurez dans `.env` les variables `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` avec les valeurs de ce projet. La clé `anon` peut être utilisée dans les variables `VITE_`; `SUPABASE_SERVICE_ROLE_KEY` doit rester réservée à l’API et ne doit jamais être publiée. Gardez `VITE_API_BASE_URL=http://localhost:3000` pour que le navigateur local appelle l’API lancée sur votre machine.
+
+Le projet cloud étant partagé avec la préproduction, toutes les données et tous les comptes créés depuis le navigateur local seront visibles dans ce projet. Ne lancez pas `db:seed`, `prisma:migrate` (`migrate dev`) ou une réinitialisation contre ce projet partagé sans avoir vérifié la cible et l’effet de la commande. Les migrations distantes devront utiliser `prisma migrate deploy` après validation explicite.
+
+L’API lit `CORS_ORIGINS` comme une liste d’origines HTTP(S) séparées par des virgules, sans chemin. La valeur d’exemple conserve les deux origines locales et autorise `https://aliceb73.github.io` pour le site GitHub Pages.
+
+### Publication web GitHub Pages
+
+Le workflow `.github/workflows/deploy-pages.yml` publie `apps/web` depuis `develop`. Dans **Settings > Pages**, choisissez **GitHub Actions** comme source de publication. Vos réglages Vite et le fichier `apps/web/public/404.html` prennent en charge le sous-chemin du dépôt. La publication est ignorée avec un avertissement tant que les variables de dépôt `VITE_API_BASE_URL`, `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` ne sont pas renseignées. Ce sont des valeurs de configuration du navigateur ; n’y placez jamais de clé secrète ou de `service_role`. L’API doit être hébergée et configurée séparément avant de rendre le site pleinement fonctionnel.
+
 ### Démarrer les applications dans Docker
 
 ```powershell

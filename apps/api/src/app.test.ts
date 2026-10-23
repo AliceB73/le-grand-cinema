@@ -24,6 +24,35 @@ describe('API baseline', () => {
     expect(response.body).toEqual({ status: 'ok' });
   });
 
+  it('allows configured origins and omits CORS headers for other origins', async () => {
+    const previousOrigins = process.env.CORS_ORIGINS;
+    process.env.CORS_ORIGINS =
+      'http://localhost:5173,https://aliceb73.github.io';
+
+    try {
+      const app = createApp();
+      const pagesResponse = await request(app)
+        .get('/api/health')
+        .set('Origin', 'https://aliceb73.github.io');
+      const unexpectedOriginResponse = await request(app)
+        .get('/api/health')
+        .set('Origin', 'https://unapproved.example');
+
+      expect(pagesResponse.headers['access-control-allow-origin']).toBe(
+        'https://aliceb73.github.io',
+      );
+      expect(
+        unexpectedOriginResponse.headers['access-control-allow-origin'],
+      ).toBeUndefined();
+    } finally {
+      if (previousOrigins === undefined) {
+        delete process.env.CORS_ORIGINS;
+      } else {
+        process.env.CORS_ORIGINS = previousOrigins;
+      }
+    }
+  });
+
   it('requires staff auth and rejects a previously consumed ticket', async () => {
     const authorize = jest.fn<AdminAuthenticator['authorize']>();
     const checkIn = jest
