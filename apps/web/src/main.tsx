@@ -7,6 +7,7 @@ import AdminLayout from './AdminLayout';
 import AdminMoviesPage from './AdminMoviesPage';
 import AdminShowtimesPage from './AdminShowtimesPage';
 import AppLayout from './AppLayout';
+import { appBasePath } from './app-base';
 import { AuthSessionProvider } from './AuthSessionProvider';
 import ForgotPasswordPage from './ForgotPasswordPage';
 import ResetPasswordPage from './ResetPasswordPage';
@@ -16,7 +17,7 @@ import './index.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={appBasePath}>
       <AuthSessionProvider>
         <Routes>
           <Route element={<AppLayout />}>

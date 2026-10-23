@@ -11,6 +11,7 @@ import {
   authPrimaryButtonClassName,
 } from './auth-form-styles';
 import { supabase } from './supabase-client';
+import { appBasePath } from './app-base';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -31,7 +32,7 @@ export default function ForgotPasswordPage() {
     setIsSubmitting(true);
 
     const redirectTo = new URL(
-      '/reinitialiser-mot-de-passe',
+      `${appBasePath}reinitialiser-mot-de-passe`,
       window.location.origin,
     ).toString();
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
