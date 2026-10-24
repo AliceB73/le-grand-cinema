@@ -22,6 +22,9 @@ describe('getUpcomingProgramme', () => {
             name: 'Salle A',
             category: RoomCategory.PREMIUM_IMAX,
             capacity: 300,
+            rows: 15,
+            columns: 20,
+            defaultPrice: 9.5,
           },
           movie: {
             id: 'movie-1',
@@ -75,6 +78,9 @@ describe('getUpcomingProgramme', () => {
         name: 'Salle A',
         category: RoomCategory.PREMIUM_IMAX,
         capacity: 300,
+        rows: 15,
+        columns: 20,
+        defaultPrice: 9.5,
       },
       movie: {
         id: 'movie-1',

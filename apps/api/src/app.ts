@@ -38,6 +38,7 @@ import {
   StripeConfigurationError,
 } from './payments/stripe-gateway.js';
 import { getUpcomingProgramme } from './programme/programme.service.js';
+import { MAX_ROOM_COLUMNS, MAX_ROOM_ROWS } from './seats/seat-layout.js';
 import {
   AdminNotFoundError,
   AdminRuleError,
@@ -99,6 +100,19 @@ const adminShowtimeCreateSchema = z.object({
   movieId: z.string().min(1).max(120),
   roomId: z.string().min(1).max(120),
   startTime: z.string().datetime(),
+  price: z.number().positive().max(1000).optional(),
+});
+const adminRoomUpdateSchema = z.object({
+  rows: z.number().int().min(1).max(MAX_ROOM_ROWS),
+  columns: z.number().int().min(1).max(MAX_ROOM_COLUMNS),
+  defaultPrice: z.number().positive().max(1000),
+});
+const isoDaySchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const adminSpecialRateSchema = z.object({
+  roomName: z.string().min(1).max(120),
+  label: z.string().trim().min(1).max(120),
+  startDate: isoDaySchema,
+  endDate: isoDaySchema,
   price: z.number().positive().max(1000),
 });
 const adminShowtimeUpdateSchema = z.object({
@@ -685,11 +699,19 @@ export function createApp(
             SHOWTIME_CANCELLED: 'Cette séance est annulée et non modifiable.',
             MOVIE_HAS_SHOWTIMES:
               'Ce film a des séances : annulez-les ou conservez le film.',
+            ROOM_HAS_BOOKINGS:
+              'Des réservations existent sur les séances à venir de cette salle : la disposition ne peut pas être modifiée.',
+            INVALID_PERIOD: 'La période est invalide.',
+            RATE_OVERLAP:
+              'Un tarif spécial existe déjà sur une partie de cette période pour cette salle.',
           } as const;
-          response.status(error.reason === 'PAST_START' ? 400 : 409).json({
-            error: error.reason,
-            message: messages[error.reason],
-          });
+          response
+            .status(
+              error.reason === 'PAST_START' || error.reason === 'INVALID_PERIOD'
+                ? 400
+                : 409,
+            )
+            .json({ error: error.reason, message: messages[error.reason] });
           return;
         }
         console.error('Admin request failed.', error);
@@ -724,6 +746,65 @@ export function createApp(
     '/api/admin/rooms',
     adminRoute(async (_request, response) => {
       response.json({ rooms: await adminService.listRooms() });
+    }),
+  );
+  app.patch(
+    '/api/admin/rooms/:roomName',
+    adminRoute(async (request, response) => {
+      const name = z.string().min(1).max(120).safeParse(request.params.roomName);
+      const body = adminRoomUpdateSchema.safeParse(request.body);
+      if (!name.success || !body.success) {
+        invalid(response);
+        return;
+      }
+      response.json({
+        room: await adminService.updateRoom(name.data, body.data),
+      });
+    }),
+  );
+  app.get(
+    '/api/admin/rates',
+    adminRoute(async (_request, response) => {
+      response.json({ rates: await adminService.listSpecialRates() });
+    }),
+  );
+  app.post(
+    '/api/admin/rates',
+    adminRoute(async (request, response) => {
+      const body = adminSpecialRateSchema.safeParse(request.body);
+      if (!body.success) {
+        invalid(response);
+        return;
+      }
+      response
+        .status(201)
+        .json({ rate: await adminService.saveSpecialRate(body.data) });
+    }),
+  );
+  app.put(
+    '/api/admin/rates/:rateId',
+    adminRoute(async (request, response) => {
+      const id = showtimeIdSchema.safeParse(request.params.rateId);
+      const body = adminSpecialRateSchema.safeParse(request.body);
+      if (!id.success || !body.success) {
+        invalid(response);
+        return;
+      }
+      response.json({
+        rate: await adminService.saveSpecialRate(body.data, id.data),
+      });
+    }),
+  );
+  app.delete(
+    '/api/admin/rates/:rateId',
+    adminRoute(async (request, response) => {
+      const id = showtimeIdSchema.safeParse(request.params.rateId);
+      if (!id.success) {
+        invalid(response);
+        return;
+      }
+      await adminService.deleteSpecialRate(id.data);
+      response.status(204).end();
     }),
   );
   app.get(

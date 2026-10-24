@@ -61,8 +61,27 @@ enum RoomCategory {
 model Room {
   name      String       @id
   category  RoomCategory
-  capacity  Int
-  showtimes Showtime[]
+  capacity  Int // rows * columns
+  rows         Int
+  columns      Int
+  defaultPrice Float        @default(9.5)
+  showtimes    Showtime[]
+  specialRates SpecialRate[]
+}
+
+// Tarif spécial daté : s'applique aux séances dont le début est dans [startsAt, endsAt[.
+model SpecialRate {
+  id        String   @id @default(uuid())
+  roomId    String
+  room      Room     @relation(fields: [roomId], references: [name], onDelete: Cascade)
+  label     String
+  startsAt  DateTime
+  endsAt    DateTime
+  price     Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([roomId, startsAt, endsAt])
 }
 
 model User {

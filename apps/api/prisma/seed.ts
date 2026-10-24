@@ -124,11 +124,11 @@ async function seed() {
         name: room.name,
         category: room.category,
         capacity: room.capacity,
+        rows: room.capacity / room.seatsPerRow,
+        columns: room.seatsPerRow,
       },
-      update: {
-        category: room.category,
-        capacity: room.capacity,
-      },
+      // La disposition et les tarifs configurés par l'administrateur sont conservés.
+      update: { category: room.category },
     });
   }
 
@@ -181,8 +181,8 @@ async function seed() {
 
       const seats = buildSeatLayout(
         screening.id,
-        layout.capacity,
-        layout.category,
+        layout.capacity / layout.seatsPerRow,
+        layout.seatsPerRow,
       );
 
       await prisma.seat.createMany({

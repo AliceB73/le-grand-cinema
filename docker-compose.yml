@@ -9,13 +9,11 @@ services:
     environment:
       VITE_API_BASE_URL: http://localhost:3000
       PORT: 3000
-      DATABASE_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
-      DIRECT_URL: postgresql://postgres:postgres@host.docker.internal:54322/postgres
-      SUPABASE_URL: http://host.docker.internal:54321
-      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?Set SUPABASE_ANON_KEY in .env from supabase status}
-      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set SUPABASE_SERVICE_ROLE_KEY in .env from supabase status}
-    extra_hosts:
-      - host.docker.internal:host-gateway
+      DATABASE_URL: ${DATABASE_URL:?Set DATABASE_URL in .env from the Supabase cloud project}
+      DIRECT_URL: ${DIRECT_URL:?Set DIRECT_URL in .env from the Supabase cloud project}
+      SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL in .env from the Supabase cloud project}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?Set SUPABASE_ANON_KEY in .env from the Supabase cloud project}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set SUPABASE_SERVICE_ROLE_KEY in .env from the Supabase cloud project}
     ports:
       - '3000:3000'
     volumes:
@@ -33,8 +31,8 @@ services:
         required: false
     environment:
       VITE_API_BASE_URL: http://localhost:3000
-      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-http://127.0.0.1:54321}
-      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY in .env from supabase status}
+      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:?Set VITE_SUPABASE_URL in .env from the Supabase cloud project}
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:?Set VITE_SUPABASE_ANON_KEY in .env from the Supabase cloud project}
     ports:
       - '5173:5173'
     volumes:

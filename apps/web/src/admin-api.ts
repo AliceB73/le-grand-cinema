@@ -39,11 +39,24 @@ const roomSchema = z.object({
   name: z.string(),
   category: z.string(),
   capacity: z.number(),
+  rows: z.number(),
+  columns: z.number(),
+  defaultPrice: z.number(),
+});
+const rateSchema = z.object({
+  id: z.string(),
+  roomName: z.string(),
+  label: z.string(),
+  startDate: z.string(),
+  endDate: z.string(),
+  price: z.number(),
 });
 
 export type AdminShowtime = z.infer<typeof showtimeSchema>;
 export type AdminMovie = z.infer<typeof movieSchema>;
 export type AdminRoom = z.infer<typeof roomSchema>;
+export type AdminSpecialRate = z.infer<typeof rateSchema>;
+export type SpecialRateInput = Omit<AdminSpecialRate, 'id'>;
 export interface MovieInput {
   title: string;
   genre: string;
@@ -134,11 +147,50 @@ export async function listRooms() {
   ).rooms;
 }
 
+export async function updateRoom(
+  name: string,
+  input: { rows: number; columns: number; defaultPrice: number },
+) {
+  return (
+    await call(
+      'PATCH',
+      `/api/admin/rooms/${encodeURIComponent(name)}`,
+      z.object({ room: roomSchema }),
+      input,
+    )
+  ).room;
+}
+
+export async function listSpecialRates() {
+  return (
+    await call(
+      'GET',
+      '/api/admin/rates',
+      z.object({ rates: z.array(rateSchema) }),
+    )
+  ).rates;
+}
+
+export async function createSpecialRate(input: SpecialRateInput) {
+  return (
+    await call(
+      'POST',
+      '/api/admin/rates',
+      z.object({ rate: rateSchema }),
+      input,
+    )
+  ).rate;
+}
+
+export function deleteSpecialRate(id: string) {
+  return call('DELETE', `/api/admin/rates/${encodeURIComponent(id)}`, null);
+}
+
 export async function createShowtime(input: {
   movieId: string;
   roomId: string;
   startTime: string;
-  price: number;
+  price?: number;
 }) {
   return (
     await call(

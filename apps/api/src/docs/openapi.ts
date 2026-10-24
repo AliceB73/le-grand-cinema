@@ -200,6 +200,13 @@ const adminMovieSchema = z.object({
   duration: z.number().int().min(1).max(600),
   posterUrl: z.string().max(500).nullable().optional(),
 });
+const adminSpecialRateSchema = z.object({
+  roomName: z.string(),
+  label: z.string().min(1).max(120),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  price: z.number().positive(),
+});
 const adminJson = (schema: z.ZodType) => ({
   content: { 'application/json': { schema } },
 });
@@ -246,7 +253,7 @@ const adminRoutes: AdminRoute[] = [
       movieId: z.string(),
       roomId: z.string(),
       startTime: z.string().datetime(),
-      price: z.number().positive(),
+      price: z.number().positive().optional(),
     }),
     responses: {
       201: {
@@ -304,6 +311,64 @@ const adminRoutes: AdminRoute[] = [
     path: '/api/admin/rooms',
     summary: 'Lister les salles',
     responses: { 200: { description: 'Salles' } },
+  },
+  {
+    method: 'patch',
+    path: '/api/admin/rooms/{roomName}',
+    summary: 'Configurer une salle',
+    description:
+      'Définit la disposition (lignes × colonnes) et le tarif par défaut. Un changement de disposition régénère les sièges des séances à venir ; il est refusé (409) si elles ont des réservations.',
+    body: z.object({
+      rows: z.number().int().min(1).max(26),
+      columns: z.number().int().min(1).max(40),
+      defaultPrice: z.number().positive(),
+    }),
+    responses: {
+      200: { description: 'Salle mise à jour' },
+      400: { description: 'Données invalides' },
+      404: { description: 'Salle introuvable' },
+      409: { description: 'Réservations sur les séances à venir' },
+    },
+  },
+  {
+    method: 'get',
+    path: '/api/admin/rates',
+    summary: 'Lister les tarifs spéciaux',
+    responses: { 200: { description: 'Tarifs spéciaux' } },
+  },
+  {
+    method: 'post',
+    path: '/api/admin/rates',
+    summary: 'Créer un tarif spécial daté',
+    description:
+      'S’applique automatiquement, à la création, aux séances de la salle dont la date est dans la période (jours inclus, heure de Paris).',
+    body: adminSpecialRateSchema,
+    responses: {
+      201: { description: 'Tarif créé' },
+      400: { description: 'Données ou période invalides' },
+      404: { description: 'Salle introuvable' },
+      409: { description: 'Période chevauchant un autre tarif de la salle' },
+    },
+  },
+  {
+    method: 'put',
+    path: '/api/admin/rates/{rateId}',
+    summary: 'Modifier un tarif spécial',
+    body: adminSpecialRateSchema,
+    responses: {
+      200: { description: 'Tarif mis à jour' },
+      404: { description: 'Tarif ou salle introuvable' },
+      409: { description: 'Période chevauchant un autre tarif de la salle' },
+    },
+  },
+  {
+    method: 'delete',
+    path: '/api/admin/rates/{rateId}',
+    summary: 'Supprimer un tarif spécial',
+    responses: {
+      204: { description: 'Tarif supprimé' },
+      404: { description: 'Tarif introuvable' },
+    },
   },
   {
     method: 'post',
