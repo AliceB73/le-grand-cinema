@@ -13,6 +13,15 @@ import { AuthSessionProvider } from './AuthSessionProvider';
 import * as api from './admin-api';
 import { supabase } from './supabase-client';
 
+const roomFixture = {
+  name: 'Salle A',
+  category: 'STANDARD',
+  capacity: 180,
+  rows: 12,
+  columns: 15,
+  defaultPrice: 9.5,
+};
+
 jest.mock('./admin-api', () => ({
   ...(jest.requireActual('./admin-api') as object),
   checkAdminAccess: jest.fn(),
@@ -107,7 +116,7 @@ describe('admin area', () => {
     jest
       .mocked(api.listRooms)
       .mockResolvedValue([
-        { name: 'Salle A', category: 'STANDARD', capacity: 180 },
+        { ...roomFixture },
       ]);
     jest
       .mocked(api.createShowtime)
@@ -153,7 +162,7 @@ describe('admin area', () => {
     jest
       .mocked(api.listRooms)
       .mockResolvedValue([
-        { name: 'Salle A', category: 'STANDARD', capacity: 180 },
+        { ...roomFixture },
       ]);
   }
 
@@ -191,7 +200,7 @@ describe('admin area', () => {
     fireEvent.change(screen.getByLabelText('Date et horaire'), {
       target: { value: '2027-02-01T18:00' },
     });
-    fireEvent.change(screen.getByLabelText('Prix plein tarif (€)'), {
+    fireEvent.change(screen.getByLabelText(/^Prix \(€\), vide/), {
       target: { value: '10' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Créer la séance' }));

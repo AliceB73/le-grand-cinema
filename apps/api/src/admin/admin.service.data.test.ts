@@ -55,7 +55,15 @@ function createTx(neighbours: object[] = []) {
           name: 'Salle A',
           category: 'STANDARD',
           capacity: 30,
+          rows: 3,
+          columns: 10,
+          defaultPrice: 8,
         }),
+      ),
+    },
+    specialRate: {
+      findMany: jest.fn<(...args: unknown[]) => Promise<unknown>>(
+        async () => [],
       ),
     },
     $executeRaw: jest.fn<(...args: unknown[]) => Promise<unknown>>(
@@ -150,6 +158,32 @@ describe('admin service', () => {
         },
       });
       expect(tx.seat.createMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('uses the special rate, then the room default, when no price is given', async () => {
+      const tx = createTx();
+      tx.specialRate.findMany.mockResolvedValueOnce([
+        {
+          startsAt: new Date('2026-11-30T23:00:00.000Z'),
+          endsAt: new Date('2026-12-07T23:00:00.000Z'),
+          price: 12.5,
+        },
+      ] as never);
+      mockTransaction(tx);
+      mockLoadShowtime();
+      await service.createShowtime({ ...input, price: undefined });
+      expect(tx.showtime.create).toHaveBeenLastCalledWith({
+        data: expect.objectContaining({ price: 12.5 }),
+      });
+
+      await service.createShowtime({
+        ...input,
+        price: undefined,
+        startTime: new Date('2027-02-01T18:00:00.000Z'),
+      });
+      expect(tx.showtime.create).toHaveBeenLastCalledWith({
+        data: expect.objectContaining({ price: 8 }),
+      });
     });
 
     it('refuses an overlapping showtime in the same room', async () => {

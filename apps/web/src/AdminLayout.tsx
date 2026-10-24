@@ -81,6 +81,9 @@ export default function AdminLayout() {
           <NavLink className={linkClassName} to="/admin/seances">
             Séances
           </NavLink>
+          <NavLink className={linkClassName} to="/admin/salles">
+            Salles et tarifs
+          </NavLink>
           <NavLink className={linkClassName} to="/admin/films">
             Films
           </NavLink>

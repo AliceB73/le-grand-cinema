@@ -60,10 +60,57 @@ describe('admin-api', () => {
     expect(await api.listShowtimes()).toHaveLength(1);
     mockFetch(200, { movies: [movie] });
     expect(await api.listMovies()).toHaveLength(1);
-    mockFetch(200, {
-      rooms: [{ name: 'Salle A', category: 'STANDARD', capacity: 180 }],
-    });
+    const roomPayload = {
+      name: 'Salle A',
+      category: 'STANDARD',
+      capacity: 180,
+      rows: 12,
+      columns: 15,
+      defaultPrice: 9.5,
+    };
+    mockFetch(200, { rooms: [roomPayload] });
     expect(await api.listRooms()).toHaveLength(1);
+  });
+
+  it('configures rooms and special rates', async () => {
+    signIn();
+    const room = {
+      name: 'Salle A',
+      category: 'STANDARD',
+      capacity: 20,
+      rows: 2,
+      columns: 10,
+      defaultPrice: 9,
+    };
+    const rate = {
+      id: 'r1',
+      roomName: 'Salle A',
+      label: 'Festival',
+      startDate: '2026-12-01',
+      endDate: '2026-12-07',
+      price: 12,
+    };
+    let fetchMock = mockFetch(200, { room });
+    await api.updateRoom('Salle A', { rows: 2, columns: 10, defaultPrice: 9 });
+    expect((fetchMock.mock.calls as unknown as string[][])[0]?.[0]).toBe(
+      'http://localhost:3000/api/admin/rooms/Salle%20A',
+    );
+    mockFetch(200, { rates: [rate] });
+    expect(await api.listSpecialRates()).toHaveLength(1);
+    mockFetch(201, { rate });
+    const input = {
+      roomName: rate.roomName,
+      label: rate.label,
+      startDate: rate.startDate,
+      endDate: rate.endDate,
+      price: rate.price,
+    };
+    expect((await api.createSpecialRate(input)).id).toBe('r1');
+    fetchMock = mockFetch(204, null);
+    await expect(api.deleteSpecialRate('r1')).resolves.toBeUndefined();
+    expect((fetchMock.mock.calls as unknown as string[][])[0]?.[0]).toBe(
+      'http://localhost:3000/api/admin/rates/r1',
+    );
   });
 
   it('sends showtime commands with a bearer token', async () => {

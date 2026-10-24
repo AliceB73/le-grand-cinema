@@ -22,6 +22,7 @@ function buildApp(
   const adminService = {
     listShowtimes: mockFn(async () => []),
     listRooms: mockFn(async () => []),
+    listSpecialRates: mockFn(async () => []),
     listMovies: mockFn(async () => []),
     createShowtime: mockFn(),
     updateShowtimePrice: mockFn(),
@@ -186,6 +187,91 @@ describe('admin routes', () => {
     ).toBe(400);
     expect(
       (await request(app).put('/api/admin/movies/m1').send({})).status,
+    ).toBe(400);
+  });
+
+  it('configures rooms and manages special rates', async () => {
+    const updateRoom = mockFn(async () => ({ name: 'Salle A' }));
+    const saveSpecialRate = mockFn(async () => ({ id: 'r1' }));
+    const deleteSpecialRate = mockFn(async () => undefined);
+    const { app, authorize } = buildApp({
+      updateRoom,
+      saveSpecialRate,
+      deleteSpecialRate,
+    });
+    authorize.mockResolvedValue(undefined);
+    const rate = {
+      roomName: 'Salle A',
+      label: 'Festival',
+      startDate: '2026-12-01',
+      endDate: '2026-12-07',
+      price: 12,
+    };
+
+    expect(
+      (
+        await request(app)
+          .patch('/api/admin/rooms/Salle%20A')
+          .send({ rows: 10, columns: 12, defaultPrice: 9 })
+      ).status,
+    ).toBe(200);
+    expect(updateRoom).toHaveBeenCalledWith('Salle A', {
+      rows: 10,
+      columns: 12,
+      defaultPrice: 9,
+    });
+    expect(
+      (
+        await request(app)
+          .patch('/api/admin/rooms/Salle%20A')
+          .send({ rows: 27, columns: 12, defaultPrice: 9 })
+      ).status,
+    ).toBe(400);
+    expect((await request(app).get('/api/admin/rates')).body).toEqual({
+      rates: [],
+    });
+    expect((await request(app).post('/api/admin/rates').send(rate)).status).toBe(
+      201,
+    );
+    expect(
+      (await request(app).put('/api/admin/rates/r1').send(rate)).status,
+    ).toBe(200);
+    expect(
+      (
+        await request(app)
+          .post('/api/admin/rates')
+          .send({ ...rate, startDate: 'demain' })
+      ).status,
+    ).toBe(400);
+    expect((await request(app).delete('/api/admin/rates/r1')).status).toBe(204);
+  });
+
+  it('maps room and rate rule errors', async () => {
+    const updateRoom = mockFn(async () => {
+      throw new AdminRuleError('ROOM_HAS_BOOKINGS');
+    });
+    const saveSpecialRate = mockFn(async () => {
+      throw new AdminRuleError('INVALID_PERIOD');
+    });
+    const { app, authorize } = buildApp({ updateRoom, saveSpecialRate });
+    authorize.mockResolvedValue(undefined);
+    expect(
+      (
+        await request(app)
+          .patch('/api/admin/rooms/A')
+          .send({ rows: 1, columns: 1, defaultPrice: 9 })
+      ).status,
+    ).toBe(409);
+    expect(
+      (
+        await request(app).post('/api/admin/rates').send({
+          roomName: 'A',
+          label: 'F',
+          startDate: '2026-12-01',
+          endDate: '2026-12-02',
+          price: 9,
+        })
+      ).status,
     ).toBe(400);
   });
 
