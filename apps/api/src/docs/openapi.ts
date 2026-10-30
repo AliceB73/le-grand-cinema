@@ -216,9 +216,36 @@ interface AdminRoute {
   path: string;
   summary: string;
   description?: string;
+  query?: z.ZodObject<z.ZodRawShape>;
   body?: z.ZodType;
   responses: Record<number, { description: string; content?: object }>;
 }
+
+const adminSalesReportSchema = z.object({
+  totals: z.object({
+    revenueCents: z.number().int().nonnegative(),
+    ticketsSold: z.number().int().nonnegative(),
+  }),
+  daily: z.array(
+    z.object({
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      revenueCents: z.number().int().nonnegative(),
+      ticketsSold: z.number().int().nonnegative(),
+    }),
+  ),
+  showtimes: z.array(
+    z.object({
+      showtimeId: z.string(),
+      startTime: z.string().datetime(),
+      movieId: z.string(),
+      movieTitle: z.string(),
+      genre: z.enum(genreValues),
+      roomName: z.string(),
+      revenueCents: z.number().int().nonnegative(),
+      ticketsSold: z.number().int().nonnegative(),
+    }),
+  ),
+});
 
 const adminRoutes: AdminRoute[] = [
   {
@@ -241,6 +268,28 @@ const adminRoutes: AdminRoute[] = [
         description: 'SÃ©ances triÃ©es par date',
         ...adminJson(z.object({ showtimes: z.array(adminShowtimeSchema) })),
       },
+    },
+  },
+  {
+    method: 'get',
+    path: '/api/admin/sales',
+    summary: 'Consulter les ventes confirmées',
+    description:
+      'Agrège le chiffre d’affaires et les places vendues par jour de séance et par séance, en heure de Paris. Les filtres sont combinables.',
+    query: z.object({
+      startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      genre: z.enum(genreValues).optional(),
+      movieId: z.string().optional(),
+      roomId: z.string().optional(),
+      showtimeId: z.string().optional(),
+    }),
+    responses: {
+      200: {
+        description: 'Rapport des ventes correspondant aux filtres',
+        ...adminJson(adminSalesReportSchema),
+      },
+      400: { description: 'Filtres ou période invalides' },
     },
   },
   {
@@ -411,6 +460,7 @@ for (const route of adminRoutes) {
     request: {
       headers: adminHeaders,
       ...(pathParam ? { params: z.object({ [pathParam]: z.string() }) } : {}),
+      ...(route.query ? { query: route.query } : {}),
       ...(route.body
         ? {
             body: {

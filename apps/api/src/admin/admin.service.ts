@@ -1,4 +1,5 @@
-import { Genre, type Prisma } from '@prisma/client';
+import { Genre, Prisma } from '@prisma/client';
+import { DateTime } from 'luxon';
 import { prisma } from '../data/prisma.js';
 import { buildSeatLayout } from '../seats/seat-layout.js';
 import {
@@ -10,6 +11,7 @@ import {
 
 const MINUTE_MS = 60_000;
 const MAX_MOVIE_DURATION_MINUTES = 24 * 60;
+const PARIS_TIME_ZONE = 'Europe/Paris';
 
 export class AdminNotFoundError extends Error {
   constructor(readonly entity: 'movie' | 'room' | 'showtime' | 'rate') {
@@ -134,6 +136,34 @@ export interface MovieInput {
   description: string;
   duration: number;
   posterUrl?: string | null;
+}
+
+export interface SalesReportInput {
+  startDate: string;
+  endDate: string;
+  genre?: Genre;
+  movieId?: string;
+  roomId?: string;
+  showtimeId?: string;
+}
+
+interface SalesAggregateRow {
+  showtimeId: string;
+  startTime: Date;
+  movieId: string;
+  movieTitle: string;
+  genre: Genre;
+  roomName: string;
+  revenueCents: bigint;
+  ticketsSold: bigint;
+}
+
+function toSafeInteger(value: bigint, field: string) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number)) {
+    throw new RangeError(`${field} exceeds the supported integer range.`);
+  }
+  return number;
 }
 
 type ShowtimeRow = Prisma.ShowtimeGetPayload<{ include: { movie: true } }>;
@@ -313,6 +343,97 @@ export function createAdminService(now: () => Date = () => new Date()) {
         },
         orderBy: { title: 'asc' },
       });
+    },
+
+    async getSalesReport(input: SalesReportInput) {
+      const period = dayRangeToPeriod(input.startDate, input.endDate);
+      if (!period) {
+        throw new AdminRuleError('INVALID_PERIOD');
+      }
+
+      const conditions = [
+        Prisma.sql`b."status" = 'CONFIRMED'::"BookingStatus"`,
+        Prisma.sql`st."startTime" >= ${period.startsAt}`,
+        Prisma.sql`st."startTime" < ${period.endsAt}`,
+      ];
+      if (input.genre) {
+        conditions.push(Prisma.sql`m."genre" = ${input.genre}::"Genre"`);
+      }
+      if (input.movieId) {
+        conditions.push(Prisma.sql`st."movieId" = ${input.movieId}`);
+      }
+      if (input.roomId) {
+        conditions.push(Prisma.sql`st."roomId" = ${input.roomId}`);
+      }
+      if (input.showtimeId) {
+        conditions.push(Prisma.sql`st."id" = ${input.showtimeId}`);
+      }
+
+      const rows = await prisma.$queryRaw<SalesAggregateRow[]>(Prisma.sql`
+        SELECT
+          st."id" AS "showtimeId",
+          st."startTime",
+          st."movieId",
+          m."title" AS "movieTitle",
+          m."genre",
+          st."roomId" AS "roomName",
+          COALESCE(SUM(b."totalAmountCents"), 0)::bigint AS "revenueCents",
+          COALESCE(SUM(CARDINALITY(b."seatIds")), 0)::bigint AS "ticketsSold"
+        FROM "Booking" b
+        INNER JOIN "Showtime" st ON st."id" = b."showtimeId"
+        INNER JOIN "Movie" m ON m."id" = st."movieId"
+        WHERE ${Prisma.join(conditions, ' AND ')}
+        GROUP BY st."id", st."startTime", st."movieId", m."title", m."genre", st."roomId"
+        ORDER BY st."startTime" ASC, m."title" ASC
+      `);
+
+      const dailyTotals = new Map<
+        string,
+        { revenueCents: bigint; ticketsSold: bigint }
+      >();
+      let totalRevenueCents = 0n;
+      let totalTicketsSold = 0n;
+      const showtimes = rows.map((row) => {
+        const date = DateTime.fromJSDate(row.startTime, { zone: 'utc' })
+          .setZone(PARIS_TIME_ZONE)
+          .toISODate();
+        if (!date) {
+          throw new RangeError('Unable to format the showtime date.');
+        }
+        const daily = dailyTotals.get(date) ?? {
+          revenueCents: 0n,
+          ticketsSold: 0n,
+        };
+        daily.revenueCents += row.revenueCents;
+        daily.ticketsSold += row.ticketsSold;
+        dailyTotals.set(date, daily);
+        totalRevenueCents += row.revenueCents;
+        totalTicketsSold += row.ticketsSold;
+
+        return {
+          showtimeId: row.showtimeId,
+          startTime: row.startTime.toISOString(),
+          movieId: row.movieId,
+          movieTitle: row.movieTitle,
+          genre: row.genre,
+          roomName: row.roomName,
+          revenueCents: toSafeInteger(row.revenueCents, 'Showtime revenue'),
+          ticketsSold: toSafeInteger(row.ticketsSold, 'Showtime ticket count'),
+        };
+      });
+
+      return {
+        totals: {
+          revenueCents: toSafeInteger(totalRevenueCents, 'Total revenue'),
+          ticketsSold: toSafeInteger(totalTicketsSold, 'Total ticket count'),
+        },
+        daily: [...dailyTotals.entries()].map(([date, totals]) => ({
+          date,
+          revenueCents: toSafeInteger(totals.revenueCents, 'Daily revenue'),
+          ticketsSold: toSafeInteger(totals.ticketsSold, 'Daily ticket count'),
+        })),
+        showtimes,
+      };
     },
 
     async createShowtime(input: {

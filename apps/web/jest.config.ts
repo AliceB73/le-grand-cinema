@@ -25,6 +25,7 @@ const config: Config = {
     '<rootDir>/src/my-bookings-api.ts',
     '<rootDir>/src/admin-api.ts',
     '<rootDir>/src/AdminLayout.tsx',
+    '<rootDir>/src/AdminSalesPage.tsx',
     '<rootDir>/src/AdminShowtimesPage.tsx',
     '<rootDir>/src/AdminMoviesPage.tsx',
     '<rootDir>/src/AdminRoomsPage.tsx',
