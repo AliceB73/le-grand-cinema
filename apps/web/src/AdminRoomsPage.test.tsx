@@ -97,7 +97,9 @@ describe('AdminRoomsPage', () => {
     });
     jest
       .mocked(api.updateRoom)
-      .mockRejectedValue(new api.AdminApiError(409, 'Réservations existantes.'));
+      .mockRejectedValue(
+        new api.AdminApiError(409, 'Réservations existantes.'),
+      );
     fireEvent.click(screen.getByRole('button', { name: /Enregistrer/ }));
     await waitFor(() =>
       expect(screen.getByRole('alert').textContent).toBe(
@@ -156,6 +158,8 @@ describe('AdminRoomsPage', () => {
     jest.spyOn(window, 'confirm').mockReturnValue(true);
     expect(await screen.findByText(/du 2026-12-01 au 2026-12-07/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /Supprimer/ }));
-    await waitFor(() => expect(api.deleteSpecialRate).toHaveBeenCalledWith('r1'));
+    await waitFor(() =>
+      expect(api.deleteSpecialRate).toHaveBeenCalledWith('r1'),
+    );
   });
 });

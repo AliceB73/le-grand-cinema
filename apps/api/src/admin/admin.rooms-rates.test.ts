@@ -60,11 +60,17 @@ describe('room configuration', () => {
   function roomTx(bookings = 0, rows = 3, columns = 10) {
     return {
       room: {
-        findUnique: jest.fn<Fn>(async () => ({ name: 'Salle A', rows, columns })),
+        findUnique: jest.fn<Fn>(async () => ({
+          name: 'Salle A',
+          rows,
+          columns,
+        })),
         update: jest.fn<Fn>(async () => ({ name: 'Salle A' })),
       },
       $executeRaw: jest.fn<Fn>(async () => 1),
-      showtime: { findMany: jest.fn<Fn>(async () => [{ id: 's1' }, { id: 's2' }]) },
+      showtime: {
+        findMany: jest.fn<Fn>(async () => [{ id: 's1' }, { id: 's2' }]),
+      },
       booking: { count: jest.fn<Fn>(async () => bookings) },
       seat: {
         deleteMany: jest.fn<Fn>(async () => ({})),
@@ -76,9 +82,15 @@ describe('room configuration', () => {
   it('regenerates seats of upcoming showtimes when the layout changes', async () => {
     const tx = roomTx();
     mockTransaction(tx);
-    await service.updateRoom('Salle A', { rows: 2, columns: 5, defaultPrice: 9 });
+    await service.updateRoom('Salle A', {
+      rows: 2,
+      columns: 5,
+      defaultPrice: 9,
+    });
     expect(tx.seat.deleteMany).toHaveBeenCalled();
-    const [{ data }] = tx.seat.createMany.mock.calls[0] as [{ data: unknown[] }];
+    const [{ data }] = tx.seat.createMany.mock.calls[0] as [
+      { data: unknown[] },
+    ];
     expect(data).toHaveLength(20);
     expect(tx.room.update).toHaveBeenCalledWith({
       where: { name: 'Salle A' },
@@ -99,7 +111,11 @@ describe('room configuration', () => {
   it('only updates the price when the layout is unchanged', async () => {
     const tx = roomTx(5);
     mockTransaction(tx);
-    await service.updateRoom('Salle A', { rows: 3, columns: 10, defaultPrice: 11 });
+    await service.updateRoom('Salle A', {
+      rows: 3,
+      columns: 10,
+      defaultPrice: 11,
+    });
     expect(tx.showtime.findMany).not.toHaveBeenCalled();
     expect(tx.room.update).toHaveBeenCalled();
   });
@@ -181,13 +197,23 @@ describe('special rates', () => {
       entity: 'rate',
     });
 
-    jest.spyOn(prisma.specialRate, 'findMany').mockResolvedValue([
-      { id: 'r1', roomId: 'Salle A', label: 'F', price: 12, ...dayRangeToPeriod('2026-12-01', '2026-12-07')! },
-    ] as never);
+    jest
+      .spyOn(prisma.specialRate, 'findMany')
+      .mockResolvedValue([
+        {
+          id: 'r1',
+          roomId: 'Salle A',
+          label: 'F',
+          price: 12,
+          ...dayRangeToPeriod('2026-12-01', '2026-12-07')!,
+        },
+      ] as never);
     expect(await service.listSpecialRates()).toHaveLength(1);
 
     jest.spyOn(prisma.specialRate, 'findUnique').mockResolvedValue({} as never);
-    const del = jest.spyOn(prisma.specialRate, 'delete').mockResolvedValue({} as never);
+    const del = jest
+      .spyOn(prisma.specialRate, 'delete')
+      .mockResolvedValue({} as never);
     await service.deleteSpecialRate('r1');
     expect(del).toHaveBeenCalled();
     jest.spyOn(prisma.specialRate, 'findUnique').mockResolvedValue(null);

@@ -113,11 +113,7 @@ describe('admin area', () => {
         posterUrl: null,
       },
     ]);
-    jest
-      .mocked(api.listRooms)
-      .mockResolvedValue([
-        { ...roomFixture },
-      ]);
+    jest.mocked(api.listRooms).mockResolvedValue([{ ...roomFixture }]);
     jest
       .mocked(api.createShowtime)
       .mockRejectedValue(
@@ -159,11 +155,7 @@ describe('admin area', () => {
         posterUrl: null,
       },
     ]);
-    jest
-      .mocked(api.listRooms)
-      .mockResolvedValue([
-        { ...roomFixture },
-      ]);
+    jest.mocked(api.listRooms).mockResolvedValue([{ ...roomFixture }]);
   }
 
   it('shows an error when showtimes cannot be loaded', async () => {

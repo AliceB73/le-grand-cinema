@@ -175,7 +175,13 @@ export default function AdminRoomsPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     const value = parsePrice(price);
-    if (!roomName || !label.trim() || !startDate || !endDate || value === null) {
+    if (
+      !roomName ||
+      !label.trim() ||
+      !startDate ||
+      !endDate ||
+      value === null
+    ) {
       notify(
         'Renseignez la salle, le libellé, la période et un tarif positif.',
         true,

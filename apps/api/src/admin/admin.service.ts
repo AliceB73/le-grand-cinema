@@ -268,7 +268,10 @@ export function createAdminService(now: () => Date = () => new Date()) {
         if (!room) {
           throw new AdminNotFoundError('room');
         }
-        if (id && !(await transaction.specialRate.findUnique({ where: { id } }))) {
+        if (
+          id &&
+          !(await transaction.specialRate.findUnique({ where: { id } }))
+        ) {
           throw new AdminNotFoundError('rate');
         }
         const others = await transaction.specialRate.findMany({

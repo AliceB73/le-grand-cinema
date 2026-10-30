@@ -750,7 +750,11 @@ export function createApp(
   app.patch(
     '/api/admin/rooms/:roomName',
     adminRoute(async (request, response) => {
-      const name = z.string().min(1).max(120).safeParse(request.params.roomName);
+      const name = z
+        .string()
+        .min(1)
+        .max(120)
+        .safeParse(request.params.roomName);
       const body = adminRoomUpdateSchema.safeParse(request.body);
       if (!name.success || !body.success) {
         invalid(response);

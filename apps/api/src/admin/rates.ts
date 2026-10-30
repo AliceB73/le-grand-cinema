@@ -22,7 +22,9 @@ export function dayRangeToPeriod(startDate: string, endDate: string) {
 
 export function periodToDayRange(period: { startsAt: Date; endsAt: Date }) {
   return {
-    startDate: DateTime.fromJSDate(period.startsAt, { zone: ZONE }).toISODate()!,
+    startDate: DateTime.fromJSDate(period.startsAt, {
+      zone: ZONE,
+    }).toISODate()!,
     endDate: DateTime.fromJSDate(period.endsAt, { zone: ZONE })
       .minus({ days: 1 })
       .toISODate()!,

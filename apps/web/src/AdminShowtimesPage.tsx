@@ -177,7 +177,8 @@ export default function AdminShowtimesPage() {
   async function submit(event: FormEvent) {
     event.preventDefault();
     const trimmedPrice = price.trim();
-    const value = trimmedPrice === '' ? undefined : Number(trimmedPrice.replace(',', '.'));
+    const value =
+      trimmedPrice === '' ? undefined : Number(trimmedPrice.replace(',', '.'));
     const date = new Date(startTime);
     if (
       !movieId ||

@@ -230,9 +230,9 @@ describe('admin routes', () => {
     expect((await request(app).get('/api/admin/rates')).body).toEqual({
       rates: [],
     });
-    expect((await request(app).post('/api/admin/rates').send(rate)).status).toBe(
-      201,
-    );
+    expect(
+      (await request(app).post('/api/admin/rates').send(rate)).status,
+    ).toBe(201);
     expect(
       (await request(app).put('/api/admin/rates/r1').send(rate)).status,
     ).toBe(200);
