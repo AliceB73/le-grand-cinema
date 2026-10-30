@@ -197,17 +197,15 @@ describe('special rates', () => {
       entity: 'rate',
     });
 
-    jest
-      .spyOn(prisma.specialRate, 'findMany')
-      .mockResolvedValue([
-        {
-          id: 'r1',
-          roomId: 'Salle A',
-          label: 'F',
-          price: 12,
-          ...dayRangeToPeriod('2026-12-01', '2026-12-07')!,
-        },
-      ] as never);
+    jest.spyOn(prisma.specialRate, 'findMany').mockResolvedValue([
+      {
+        id: 'r1',
+        roomId: 'Salle A',
+        label: 'F',
+        price: 12,
+        ...dayRangeToPeriod('2026-12-01', '2026-12-07')!,
+      },
+    ] as never);
     expect(await service.listSpecialRates()).toHaveLength(1);
 
     jest.spyOn(prisma.specialRate, 'findUnique').mockResolvedValue({} as never);
