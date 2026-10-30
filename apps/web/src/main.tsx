@@ -5,6 +5,7 @@ import App from './App';
 import AccountPage from './AccountPage';
 import AdminLayout from './AdminLayout';
 import AdminMoviesPage from './AdminMoviesPage';
+import AdminRoomsPage from './AdminRoomsPage';
 import AdminShowtimesPage from './AdminShowtimesPage';
 import AppLayout from './AppLayout';
 import { appBasePath } from './app-base';
@@ -28,6 +29,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             <Route path="/admin" element={<AdminLayout />}>
               <Route index element={<Navigate replace to="seances" />} />
               <Route path="seances" element={<AdminShowtimesPage />} />
+              <Route path="salles" element={<AdminRoomsPage />} />
               <Route path="films" element={<AdminMoviesPage />} />
             </Route>
             <Route

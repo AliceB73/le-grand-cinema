@@ -151,7 +151,7 @@ export default function AdminShowtimesPage() {
   const [movieId, setMovieId] = useState('');
   const [roomId, setRoomId] = useState('');
   const [startTime, setStartTime] = useState('');
-  const [price, setPrice] = useState('9.50');
+  const [price, setPrice] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const reload = useCallback(async () => {
@@ -176,17 +176,18 @@ export default function AdminShowtimesPage() {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const value = Number(price.replace(',', '.'));
+    const trimmedPrice = price.trim();
+    const value =
+      trimmedPrice === '' ? undefined : Number(trimmedPrice.replace(',', '.'));
     const date = new Date(startTime);
     if (
       !movieId ||
       !roomId ||
       Number.isNaN(date.getTime()) ||
-      !Number.isFinite(value) ||
-      value <= 0
+      (value !== undefined && (!Number.isFinite(value) || value <= 0))
     ) {
       setFeedback({
-        text: 'Renseignez le film, la salle, la date, l’horaire et un prix positif.',
+        text: 'Renseignez le film, la salle, la date, l’horaire et, si vous le précisez, un prix positif.',
         isError: true,
       });
       return;
@@ -197,7 +198,7 @@ export default function AdminShowtimesPage() {
         movieId,
         roomId,
         startTime: date.toISOString(),
-        price: value,
+        ...(value === undefined ? {} : { price: value }),
       });
       setFeedback({ text: 'Séance créée.', isError: false });
       setStartTime('');
@@ -263,12 +264,12 @@ export default function AdminShowtimesPage() {
             />
           </label>
           <label className="block text-sm font-semibold">
-            Prix plein tarif (€)
+            Prix (€), vide = tarif de la salle
             <input
               className={authFieldClassName}
               inputMode="decimal"
               onChange={(event) => setPrice(event.target.value)}
-              required
+              placeholder="Tarif automatique"
               value={price}
             />
           </label>

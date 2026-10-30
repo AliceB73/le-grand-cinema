@@ -2,8 +2,8 @@ import { describe, expect, it } from '@jest/globals';
 import { buildSeatLayout } from './seat-layout.js';
 
 describe('buildSeatLayout', () => {
-  it('fills rows according to the room category', () => {
-    const seats = buildSeatLayout('s1', 70, 'EVENT');
+  it('fills the configured rows and columns', () => {
+    const seats = buildSeatLayout('s1', 7, 10);
     expect(seats).toHaveLength(70);
     expect(seats[0]).toEqual({
       showtimeId: 's1',

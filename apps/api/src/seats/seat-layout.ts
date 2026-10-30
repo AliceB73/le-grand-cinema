@@ -1,23 +1,16 @@
-import type { RoomCategory } from '@prisma/client';
-
-const seatsPerRowByCategory: Record<RoomCategory, number> = {
-  PREMIUM_IMAX: 20,
-  STANDARD: 15,
-  VIP: 12,
-  EVENT: 10,
-};
+export const MAX_ROOM_ROWS = 26;
+export const MAX_ROOM_COLUMNS = 40;
 
 export function buildSeatLayout(
   showtimeId: string,
-  capacity: number,
-  category: RoomCategory,
+  rows: number,
+  columns: number,
 ) {
-  const seatsPerRow = seatsPerRowByCategory[category];
-  return Array.from({ length: capacity }, (_, index) => ({
+  return Array.from({ length: rows * columns }, (_, index) => ({
     showtimeId,
     rowNumber: String.fromCharCode(
-      'A'.charCodeAt(0) + Math.floor(index / seatsPerRow),
+      'A'.charCodeAt(0) + Math.floor(index / columns),
     ),
-    seatNumber: (index % seatsPerRow) + 1,
+    seatNumber: (index % columns) + 1,
   }));
 }

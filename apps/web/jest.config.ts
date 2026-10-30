@@ -27,6 +27,7 @@ const config: Config = {
     '<rootDir>/src/AdminLayout.tsx',
     '<rootDir>/src/AdminShowtimesPage.tsx',
     '<rootDir>/src/AdminMoviesPage.tsx',
+    '<rootDir>/src/AdminRoomsPage.tsx',
   ],
   setupFilesAfterEnv: ['<rootDir>/src/setupTests.ts'],
   transform: {

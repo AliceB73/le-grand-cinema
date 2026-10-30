@@ -16,7 +16,8 @@ Pour garantir une gestion claire du versionning du projet, nous appliquons la st
 
 - Git, Node.js 24 et npm 11
 - Docker Desktop démarré
-- Supabase CLI, fournie comme dépendance du projet (`npm.cmd ci`)
+- Un projet Supabase cloud (URL, clés `anon` et `service_role`, chaînes de connexion Postgres)
+- Supabase CLI, fournie comme dépendance du projet (`npm.cmd ci`), uniquement utile pour un Supabase local hors Docker Compose
 
 ### Installer les dépendances et configurer l’environnement
 
@@ -27,7 +28,7 @@ npm.cmd ci
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-La configuration Supabase est versionnée dans `supabase/config.toml`. Pour démarrer les services locaux :
+La configuration Supabase locale est versionnée dans `supabase/config.toml` et n’est plus utilisée par Docker Compose, qui cible le projet cloud. Pour un Supabase local optionnel (hors Compose), démarrez les services avec :
 
 ```powershell
 npm.cmd run supabase:start
@@ -89,10 +90,8 @@ npm.cmd run dev
 - Inscription / connexion : <http://localhost:5173/inscription> et <http://localhost:5173/connexion>
 - API : <http://localhost:3000/api/health>
 - Swagger UI : <http://localhost:3000/api/docs>
-- Supabase Studio : <http://localhost:54323>
-- Mailpit (courriels Auth interceptés si le SMTP Resend est désactivé) : <http://127.0.0.1:54324>
 
-Docker Compose démarre le front et l’API. Supabase CLI démarre séparément ses services dans Docker ; l’API les joint via `host.docker.internal`.
+Docker Compose démarre uniquement le front et l’API, qui utilisent le projet Supabase cloud configuré dans `.env` (voir « Développement local avec le projet Supabase cloud »). Les variables `DATABASE_URL`, `DIRECT_URL`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` sont obligatoires ; Compose refuse de démarrer si l’une manque. Supabase CLI n’est pas nécessaire : Studio se trouve dans le dashboard Supabase.
 
 Les dépendances sont persistées dans des volumes Docker nommés. Après l’ajout ou la modification d’une dépendance, un simple redémarrage ou `docker compose up --build` ne met pas à jour un volume déjà créé. Installez les dépendances du service concerné dans ce volume, puis redémarrez-le ; pour une nouvelle dépendance API :
 
@@ -101,11 +100,10 @@ docker compose exec api npm install --workspace=@le-grand-cinema/api
 docker compose restart api
 ```
 
-Pour arrêter les conteneurs applicatifs et Supabase :
+Pour arrêter les conteneurs applicatifs :
 
 ```powershell
 docker compose down
-npm.cmd run supabase:stop
 ```
 
 ### Vérifications

@@ -1,12 +1,18 @@
 import { Genre, type Prisma } from '@prisma/client';
 import { prisma } from '../data/prisma.js';
 import { buildSeatLayout } from '../seats/seat-layout.js';
+import {
+  dayRangeToPeriod,
+  periodToDayRange,
+  periodsOverlap,
+  resolveShowtimePrice,
+} from './rates.js';
 
 const MINUTE_MS = 60_000;
 const MAX_MOVIE_DURATION_MINUTES = 24 * 60;
 
 export class AdminNotFoundError extends Error {
-  constructor(readonly entity: 'movie' | 'room' | 'showtime') {
+  constructor(readonly entity: 'movie' | 'room' | 'showtime' | 'rate') {
     super(`${entity} not found`);
     this.name = 'AdminNotFoundError';
   }
@@ -24,7 +30,12 @@ export class ShowtimeConflictError extends Error {
 export class AdminRuleError extends Error {
   constructor(
     readonly reason:
-      'PAST_START' | 'SHOWTIME_CANCELLED' | 'MOVIE_HAS_SHOWTIMES',
+      | 'PAST_START'
+      | 'SHOWTIME_CANCELLED'
+      | 'MOVIE_HAS_SHOWTIMES'
+      | 'ROOM_HAS_BOOKINGS'
+      | 'INVALID_PERIOD'
+      | 'RATE_OVERLAP',
   ) {
     super(reason);
     this.name = 'AdminRuleError';
@@ -78,6 +89,43 @@ export interface AdminRoom {
   name: string;
   category: string;
   capacity: number;
+  rows: number;
+  columns: number;
+  defaultPrice: number;
+}
+
+export interface AdminSpecialRate {
+  id: string;
+  roomName: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  price: number;
+}
+
+export interface SpecialRateInput {
+  roomName: string;
+  label: string;
+  startDate: string;
+  endDate: string;
+  price: number;
+}
+
+function toAdminRate(rate: {
+  id: string;
+  roomId: string;
+  label: string;
+  startsAt: Date;
+  endsAt: Date;
+  price: number;
+}): AdminSpecialRate {
+  return {
+    id: rate.id,
+    roomName: rate.roomId,
+    label: rate.label,
+    ...periodToDayRange(rate),
+    price: rate.price,
+  };
 }
 
 export interface MovieInput {
@@ -145,6 +193,114 @@ export function createAdminService(now: () => Date = () => new Date()) {
       return prisma.room.findMany({ orderBy: { name: 'asc' } });
     },
 
+    async updateRoom(
+      name: string,
+      input: { rows: number; columns: number; defaultPrice: number },
+    ): Promise<AdminRoom> {
+      return prisma.$transaction(async (transaction) => {
+        const room = await transaction.room.findUnique({ where: { name } });
+        if (!room) {
+          throw new AdminNotFoundError('room');
+        }
+        const layoutChanged =
+          room.rows !== input.rows || room.columns !== input.columns;
+        if (layoutChanged) {
+          // Same lock as showtime creation: no new showtime while seats are regenerated.
+          await transaction.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${room.name}))`;
+          const upcoming = await transaction.showtime.findMany({
+            where: {
+              roomId: name,
+              status: 'SCHEDULED',
+              startTime: { gt: now() },
+            },
+            select: { id: true },
+          });
+          const showtimeIds = upcoming.map(({ id }) => id);
+          const bookings = await transaction.booking.count({
+            where: {
+              showtimeId: { in: showtimeIds },
+              status: { in: ['PENDING', 'CONFIRMED'] },
+            },
+          });
+          if (bookings > 0) {
+            throw new AdminRuleError('ROOM_HAS_BOOKINGS');
+          }
+          await transaction.seat.deleteMany({
+            where: { showtimeId: { in: showtimeIds } },
+          });
+          await transaction.seat.createMany({
+            data: showtimeIds.flatMap((showtimeId) =>
+              buildSeatLayout(showtimeId, input.rows, input.columns),
+            ),
+          });
+        }
+        return transaction.room.update({
+          where: { name },
+          data: {
+            rows: input.rows,
+            columns: input.columns,
+            capacity: input.rows * input.columns,
+            defaultPrice: input.defaultPrice,
+          },
+        });
+      });
+    },
+
+    async listSpecialRates(): Promise<AdminSpecialRate[]> {
+      const rates = await prisma.specialRate.findMany({
+        orderBy: [{ roomId: 'asc' }, { startsAt: 'asc' }],
+      });
+      return rates.map(toAdminRate);
+    },
+
+    async saveSpecialRate(
+      input: SpecialRateInput,
+      id?: string,
+    ): Promise<AdminSpecialRate> {
+      const period = dayRangeToPeriod(input.startDate, input.endDate);
+      if (!period) {
+        throw new AdminRuleError('INVALID_PERIOD');
+      }
+      const saved = await prisma.$transaction(async (transaction) => {
+        const room = await transaction.room.findUnique({
+          where: { name: input.roomName },
+        });
+        if (!room) {
+          throw new AdminNotFoundError('room');
+        }
+        if (
+          id &&
+          !(await transaction.specialRate.findUnique({ where: { id } }))
+        ) {
+          throw new AdminNotFoundError('rate');
+        }
+        const others = await transaction.specialRate.findMany({
+          where: { roomId: room.name, ...(id ? { id: { not: id } } : {}) },
+        });
+        if (others.some((other) => periodsOverlap(other, period))) {
+          throw new AdminRuleError('RATE_OVERLAP');
+        }
+        const data = {
+          roomId: room.name,
+          label: input.label,
+          price: input.price,
+          ...period,
+        };
+        return id
+          ? transaction.specialRate.update({ where: { id }, data })
+          : transaction.specialRate.create({ data });
+      });
+      return toAdminRate(saved);
+    },
+
+    async deleteSpecialRate(id: string): Promise<void> {
+      const existing = await prisma.specialRate.findUnique({ where: { id } });
+      if (!existing) {
+        throw new AdminNotFoundError('rate');
+      }
+      await prisma.specialRate.delete({ where: { id } });
+    },
+
     async listMovies(): Promise<AdminMovie[]> {
       return prisma.movie.findMany({
         select: {
@@ -163,7 +319,7 @@ export function createAdminService(now: () => Date = () => new Date()) {
       movieId: string;
       roomId: string;
       startTime: Date;
-      price: number;
+      price?: number;
     }): Promise<AdminShowtime> {
       if (input.startTime <= now()) {
         throw new AdminRuleError('PAST_START');
@@ -212,16 +368,26 @@ export function createAdminService(now: () => Date = () => new Date()) {
           });
         }
 
+        const price =
+          input.price ??
+          resolveShowtimePrice(
+            input.startTime,
+            room.defaultPrice,
+            await transaction.specialRate.findMany({
+              where: { roomId: room.name },
+              orderBy: { startsAt: 'asc' },
+            }),
+          );
         const created = await transaction.showtime.create({
           data: {
             movieId: movie.id,
             roomId: room.name,
             startTime: input.startTime,
-            price: input.price,
+            price,
           },
         });
         await transaction.seat.createMany({
-          data: buildSeatLayout(created.id, room.capacity, room.category),
+          data: buildSeatLayout(created.id, room.rows, room.columns),
         });
         return created.id;
       });
