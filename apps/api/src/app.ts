@@ -125,6 +125,14 @@ const adminMovieSchema = z.object({
   duration: z.number().int().min(1).max(600),
   posterUrl: z.string().trim().max(500).nullable().optional(),
 });
+const adminSalesQuerySchema = z.object({
+  startDate: isoDaySchema,
+  endDate: isoDaySchema,
+  genre: z.nativeEnum(Genre).optional(),
+  movieId: z.string().min(1).max(120).optional(),
+  roomId: z.string().min(1).max(120).optional(),
+  showtimeId: z.string().min(1).max(120).optional(),
+});
 
 type ProgrammeProvider = () => ReturnType<typeof getUpcomingProgramme>;
 export interface SeatService {
@@ -815,6 +823,17 @@ export function createApp(
     '/api/admin/movies',
     adminRoute(async (_request, response) => {
       response.json({ movies: await adminService.listMovies() });
+    }),
+  );
+  app.get(
+    '/api/admin/sales',
+    adminRoute(async (request, response) => {
+      const query = adminSalesQuerySchema.safeParse(request.query);
+      if (!query.success) {
+        invalid(response);
+        return;
+      }
+      response.json(await adminService.getSalesReport(query.data));
     }),
   );
   app.post(

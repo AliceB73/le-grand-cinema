@@ -6,6 +6,7 @@ import AccountPage from './AccountPage';
 import AdminLayout from './AdminLayout';
 import AdminMoviesPage from './AdminMoviesPage';
 import AdminRoomsPage from './AdminRoomsPage';
+import AdminSalesPage from './AdminSalesPage';
 import AdminShowtimesPage from './AdminShowtimesPage';
 import AppLayout from './AppLayout';
 import { appBasePath } from './app-base';
@@ -31,6 +32,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <Route path="seances" element={<AdminShowtimesPage />} />
               <Route path="salles" element={<AdminRoomsPage />} />
               <Route path="films" element={<AdminMoviesPage />} />
+              <Route path="ventes" element={<AdminSalesPage />} />
             </Route>
             <Route
               path="/mot-de-passe-oublie"

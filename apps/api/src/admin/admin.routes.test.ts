@@ -24,6 +24,11 @@ function buildApp(
     listRooms: mockFn(async () => []),
     listSpecialRates: mockFn(async () => []),
     listMovies: mockFn(async () => []),
+    getSalesReport: mockFn(async () => ({
+      totals: { revenueCents: 0, ticketsSold: 0 },
+      daily: [],
+      showtimes: [],
+    })),
     createShowtime: mockFn(),
     updateShowtimePrice: mockFn(),
     cancelShowtime: mockFn(),
@@ -56,7 +61,13 @@ describe('admin routes', () => {
     const forbidden = await request(app).get('/api/admin/me');
     expect(forbidden.status).toBe(403);
     expect(forbidden.body.error).toBe('ADMIN_REQUIRED');
+    authorize.mockRejectedValueOnce(new AdminAuthenticationError('missing'));
+    const sales = await request(app).get(
+      '/api/admin/sales?startDate=2026-12-01&endDate=2026-12-31',
+    );
+    expect(sales.status).toBe(401);
     expect(adminService.listShowtimes).not.toHaveBeenCalled();
+    expect(adminService.getSalesReport).not.toHaveBeenCalled();
   });
 
   it('confirms the admin role', async () => {
@@ -64,6 +75,40 @@ describe('admin routes', () => {
     authorize.mockResolvedValue(undefined);
     const response = await request(app).get('/api/admin/me');
     expect(response.body).toEqual({ role: 'ADMIN' });
+  });
+
+  it('returns a filtered sales report to administrators', async () => {
+    const report = {
+      totals: { revenueCents: 1250, ticketsSold: 2 },
+      daily: [{ date: '2026-12-01', revenueCents: 1250, ticketsSold: 2 }],
+      showtimes: [],
+    };
+    const getSalesReport = mockFn(async () => report);
+    const { app, authorize, adminService } = buildApp({ getSalesReport });
+    authorize.mockResolvedValue(undefined);
+    const response = await request(app).get(
+      '/api/admin/sales?startDate=2026-12-01&endDate=2026-12-31&genre=DRAME&movieId=m1&roomId=Salle%20A&showtimeId=s1',
+    );
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual(report);
+    expect(adminService.getSalesReport).toHaveBeenCalledWith({
+      startDate: '2026-12-01',
+      endDate: '2026-12-31',
+      genre: 'DRAME',
+      movieId: 'm1',
+      roomId: 'Salle A',
+      showtimeId: 's1',
+    });
+  });
+
+  it('rejects invalid sales report filters', async () => {
+    const { app, authorize, adminService } = buildApp();
+    authorize.mockResolvedValue(undefined);
+    const response = await request(app).get(
+      '/api/admin/sales?startDate=2026-02-31&endDate=2026-12-31&genre=UNKNOWN',
+    );
+    expect(response.status).toBe(400);
+    expect(adminService.getSalesReport).not.toHaveBeenCalled();
   });
 
   it('creates a showtime', async () => {

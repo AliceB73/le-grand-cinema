@@ -77,7 +77,7 @@ export default function AdminLayout() {
     <main className="mx-auto max-w-5xl space-y-8 px-6 py-12 sm:px-10">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight">Administration</h1>
-        <nav aria-label="Administration" className="flex gap-2">
+        <nav aria-label="Administration" className="flex flex-wrap gap-2">
           <NavLink className={linkClassName} to="/admin/seances">
             Séances
           </NavLink>
@@ -86,6 +86,9 @@ export default function AdminLayout() {
           </NavLink>
           <NavLink className={linkClassName} to="/admin/films">
             Films
+          </NavLink>
+          <NavLink className={linkClassName} to="/admin/ventes">
+            Ventes
           </NavLink>
         </nav>
       </div>

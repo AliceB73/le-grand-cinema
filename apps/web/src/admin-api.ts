@@ -51,11 +51,45 @@ const rateSchema = z.object({
   endDate: z.string(),
   price: z.number(),
 });
+const salesReportSchema = z.object({
+  totals: z.object({
+    revenueCents: z.number().int().nonnegative(),
+    ticketsSold: z.number().int().nonnegative(),
+  }),
+  daily: z.array(
+    z.object({
+      date: z.string(),
+      revenueCents: z.number().int().nonnegative(),
+      ticketsSold: z.number().int().nonnegative(),
+    }),
+  ),
+  showtimes: z.array(
+    z.object({
+      showtimeId: z.string(),
+      startTime: z.string(),
+      movieId: z.string(),
+      movieTitle: z.string(),
+      genre: z.string(),
+      roomName: z.string(),
+      revenueCents: z.number().int().nonnegative(),
+      ticketsSold: z.number().int().nonnegative(),
+    }),
+  ),
+});
 
 export type AdminShowtime = z.infer<typeof showtimeSchema>;
 export type AdminMovie = z.infer<typeof movieSchema>;
 export type AdminRoom = z.infer<typeof roomSchema>;
 export type AdminSpecialRate = z.infer<typeof rateSchema>;
+export type AdminSalesReport = z.infer<typeof salesReportSchema>;
+export interface AdminSalesFilters {
+  startDate: string;
+  endDate: string;
+  genre?: string;
+  movieId?: string;
+  roomId?: string;
+  showtimeId?: string;
+}
 export type SpecialRateInput = Omit<AdminSpecialRate, 'id'>;
 export interface MovieInput {
   title: string;
@@ -135,6 +169,16 @@ export async function listMovies() {
       z.object({ movies: z.array(movieSchema) }),
     )
   ).movies;
+}
+
+export async function getSalesReport(filters: AdminSalesFilters) {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) {
+      query.set(key, value);
+    }
+  }
+  return call('GET', `/api/admin/sales?${query.toString()}`, salesReportSchema);
 }
 
 export async function listRooms() {
