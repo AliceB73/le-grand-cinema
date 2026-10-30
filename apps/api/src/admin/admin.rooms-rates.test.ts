@@ -186,6 +186,15 @@ describe('special rates', () => {
     });
   });
 
+  it('fails for an unknown room', async () => {
+    const tx = rateTx();
+    tx.room.findUnique.mockResolvedValue(null);
+    mockTransaction(tx);
+    await expect(service.saveSpecialRate(input)).rejects.toMatchObject({
+      entity: 'room',
+    });
+  });
+
   it('updates, lists and deletes rates', async () => {
     const tx = rateTx();
     mockTransaction(tx);

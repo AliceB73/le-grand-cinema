@@ -152,6 +152,52 @@ describe('AdminRoomsPage', () => {
     expect(api.createSpecialRate).not.toHaveBeenCalled();
   });
 
+  it('keeps the rate when the deletion is not confirmed or fails', async () => {
+    setup([rate]);
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false);
+    await screen.findByText(/du 2026-12-01 au 2026-12-07/);
+    fireEvent.click(screen.getByRole('button', { name: /Supprimer/ }));
+    expect(api.deleteSpecialRate).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    jest
+      .mocked(api.deleteSpecialRate)
+      .mockRejectedValue(new api.AdminApiError(404, 'Tarif introuvable.'));
+    fireEvent.click(screen.getByRole('button', { name: /Supprimer/ }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe('Tarif introuvable.'),
+    );
+  });
+
+  it('reports a failed special rate creation', async () => {
+    setup();
+    jest
+      .mocked(api.createSpecialRate)
+      .mockRejectedValue(new api.AdminApiError(409, 'Période déjà tarifée.'));
+    await screen.findByLabelText('Lignes de Salle A');
+    fireEvent.change(screen.getByLabelText('Salle du tarif'), {
+      target: { value: 'Salle A' },
+    });
+    fireEvent.change(screen.getByLabelText('Libellé'), {
+      target: { value: 'Festival' },
+    });
+    fireEvent.change(screen.getByLabelText('Début de période'), {
+      target: { value: '2026-12-01' },
+    });
+    fireEvent.change(screen.getByLabelText('Fin de période'), {
+      target: { value: '2026-12-07' },
+    });
+    fireEvent.change(screen.getByLabelText('Tarif spécial (€)'), {
+      target: { value: '12' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Créer le tarif' }));
+    await waitFor(() =>
+      expect(screen.getByRole('alert').textContent).toBe(
+        'Période déjà tarifée.',
+      ),
+    );
+  });
+
   it('deletes a special rate after confirmation', async () => {
     setup([rate]);
     jest.mocked(api.deleteSpecialRate).mockResolvedValue(undefined);

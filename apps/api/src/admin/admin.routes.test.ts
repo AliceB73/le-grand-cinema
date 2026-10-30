@@ -246,6 +246,21 @@ describe('admin routes', () => {
     expect((await request(app).delete('/api/admin/rates/r1')).status).toBe(204);
   });
 
+  it('rejects invalid rate updates and unknown rates', async () => {
+    const deleteSpecialRate = mockFn(async () => {
+      throw new AdminNotFoundError('rate');
+    });
+    const { app, authorize } = buildApp({ deleteSpecialRate });
+    authorize.mockResolvedValue(undefined);
+    expect(
+      (await request(app).put('/api/admin/rates/r1').send({ price: 1 })).status,
+    ).toBe(400);
+    expect(
+      (await request(app).patch('/api/admin/rooms/A').send({})).status,
+    ).toBe(400);
+    expect((await request(app).delete('/api/admin/rates/r1')).status).toBe(404);
+  });
+
   it('maps room and rate rule errors', async () => {
     const updateRoom = mockFn(async () => {
       throw new AdminRuleError('ROOM_HAS_BOOKINGS');
