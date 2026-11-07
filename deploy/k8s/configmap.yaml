@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cinema-api-config
+  namespace: le-grand-cinema-preprod
+data:
+  PORT: '3000'
+  CORS_ORIGINS: https://aliceb73.github.io
+  WEB_BASE_URL: https://aliceb73.github.io/le-grand-cinema
