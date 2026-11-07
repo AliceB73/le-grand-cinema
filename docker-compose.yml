@@ -16,6 +16,7 @@ services:
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:?Set SUPABASE_SERVICE_ROLE_KEY in .env from the Supabase cloud project}
     ports:
       - '3000:3000'
+    command: ['npm', 'run', 'dev', '--workspace=@le-grand-cinema/api']
     volumes:
       - .:/workspace
       - api_node_modules:/workspace/node_modules

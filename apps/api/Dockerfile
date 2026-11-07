@@ -12,4 +12,4 @@ RUN npm run prisma:generate --workspace=@le-grand-cinema/api \
     && npm run build --workspace=@le-grand-cinema/api
 
 EXPOSE 3000
-CMD ["npm", "run", "dev", "--workspace=@le-grand-cinema/api"]
+CMD ["npm", "run", "start", "--workspace=@le-grand-cinema/api"]
