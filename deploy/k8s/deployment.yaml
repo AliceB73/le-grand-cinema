@@ -26,7 +26,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: api
-          image: ghcr.io/aliceb73/le-grand-cinema-api:sha-a8347993afa91125357570cc41c05c5773a685d8
+          image: ghcr.io/aliceb73/le-grand-cinema-api:sha-9fa347d88011d79a1023050c9f85c8e229adde98
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
