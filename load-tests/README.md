@@ -1,4 +1,4 @@
-# Tests k6 locaux — étapes 1 et 3
+# Tests k6 — locaux (étapes 1 et 3) et préproduction
 
 Le mode par défaut (étape 1) effectue uniquement des GET vers `/api/health` et
 `/api/programme`, et facultativement vers le plan de salle. Il ne crée ni verrou,
@@ -45,6 +45,40 @@ Sans `INCLUDE_SEATS=true`, aucun plan de salle n'est appelé. Chaque réponse do
 être HTTP 200 et le p95 de chaque route appelée inférieur à 2 000 ms ; k6 retourne
 un code d'échec si ces seuils ne sont pas respectés. Une séance inexistante,
 une API ou une base indisponible peut donc faire échouer le test.
+
+## Préproduction Kubernetes — `preprod.js`
+
+Ce script est séparé de `smoke.js` : il cible l'API déployée en préproduction et
+ne fait que des GET en lecture seule sur `/api/programme` et `/api/health`. Il ne
+crée ni verrou, ni réservation, ni checkout et n'appelle pas Stripe.
+
+Garde-fous du script :
+
+- `BASE_URL` doit être de la forme `https://api.<IP-avec-tirets>.nip.io` ;
+- `CONFIRM_PREPROD=yes` est obligatoire ;
+- `MAX_VUS` doit être un entier de 1 à 1 600 (5 par défaut). Le profil monte par
+  paliers à 25, 50, 75 puis 100 % de `MAX_VUS` ;
+- seuils : p95 < 2 s globalement et par route, moins de 1 % d'erreurs, 99 % de
+  checks réussis.
+
+Un Load Balancer et des nœuds facturés à l'heure sont sollicités : lancer le test
+uniquement avec l'accord du responsable du compte, et surveiller le HPA :
+
+```powershell
+$env:BASE_URL = 'https://api.195-15-193-101.nip.io'
+$env:CONFIRM_PREPROD = 'yes'
+$env:MAX_VUS = '100'
+k6 run .\load-tests\preprod.js
+Remove-Item Env:\BASE_URL, Env:\CONFIRM_PREPROD, Env:\MAX_VUS
+```
+
+Dans un second terminal (avec `$Kubeconfig` défini) :
+
+```powershell
+kubectl --kubeconfig $Kubeconfig get hpa -n le-grand-cinema-preprod -w
+```
+
+Les résultats mesurés sont consignés dans `tests-charge.md`.
 
 ## Étape 3 — verrouillage/libération d'un siège de test
 
