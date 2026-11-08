@@ -38,6 +38,7 @@ import {
   StripeConfigurationError,
 } from './payments/stripe-gateway.js';
 import { getUpcomingProgramme } from './programme/programme.service.js';
+import { createProgrammeCache } from './programme/programme-cache.js';
 import { MAX_ROOM_COLUMNS, MAX_ROOM_ROWS } from './seats/seat-layout.js';
 import {
   AdminNotFoundError,
@@ -156,7 +157,9 @@ const defaultSeatService: SeatService = {
 };
 
 export function createApp(
-  programmeProvider: ProgrammeProvider = () => getUpcomingProgramme(),
+  programmeProvider: ProgrammeProvider = createProgrammeCache(() =>
+    getUpcomingProgramme(),
+  ),
   seatService: SeatService = defaultSeatService,
   paymentService: PaymentService = createPaymentService(),
   ticketService: TicketService = createTicketService(),
