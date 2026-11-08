@@ -1,0 +1,24 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: cinema-api
+  namespace: le-grand-cinema-preprod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - api.195-15-193-101.nip.io
+      secretName: cinema-api-tls
+  rules:
+    - host: api.195-15-193-101.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: cinema-api
+                port:
+                  number: 80
